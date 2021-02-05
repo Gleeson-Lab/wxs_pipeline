@@ -1,0 +1,40 @@
+# config file optimized for Broad WGS pipeline (using GATK4)
+
+email : "brcopeland@ucsd.edu" # CHANGE this to your email
+
+#INPUT
+input_files : "/projects/ps-gleesonlab5/user/sangmoon/1_mm_project/data/SB_WGS/bam/rady_dragen_bam/202011_NTD_WGS_bam_2.txt"
+#input_files : "/projects/ps-gleesonlab5/user/sangmoon/1_mm_project/data/SB_WGS/bam/rady_dragen_bam/2020_06_2_rady_cram.txt"
+#input_files : "/projects/ps-gleesonlab5/user/sangmoon/1_mm_project/data/SB_WGS/bam/rady_dragen_bam/2020_04_05_06_and_3test_rady_bam.txt"
+#input_files : "/projects/ps-gleesonlab5/user/sangmoon/1_mm_project/data/SB_WGS/bam/rady_dragen_bam/2020_04_05_06_rady_bam.txt" # EDIT this file
+#input_files : "/projects/ps-gleesonlab5/user/sangmoon/1_mm_project/data/SB_WGS/bam/rady_dragen_bam/2020_04_05_06_rady_bam_3samples.txt" # EDIT this file
+out_dir : "/oasis/tscc/scratch/sal004/1_mm_project/rady_remap_202011_NTD_WGS"   # EDIT this path
+scratch_dir : "/oasis/tscc/scratch/sal004/1_mm_project/rady_remap_202011_NTD_WGS/scratch"    # EDIT this path
+temp_dir : "/oasis/tscc/scratch/sal004/1_mm_project/rady_remap_202011_NTD_WGS/scratch/temp"    # EDIT this path
+
+#SOFTWARES
+java : "/home/dantakli/java/jre1.8.0_73/bin/java"
+sambamba : "/home/dantakli/bin/sambamba"
+samtools : "/home/sal004/anaconda3/envs/wgs/bin/samtools"
+picard : "/home/sal004/software/picard_2.16.0/picard.jar" # Picard 2.16.0-SNAPSHOT
+bwa : "/home/sal004/anaconda3/envs/wgs/bin/bwa"
+gatk : "/home/sal004/software/gatk-4.0.7.0/gatk" # this is GATK 4.0.7
+qualimap : "/home/sal004/anaconda3/bin/qualimap"
+
+#reference files
+hg38_fasta :         "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Homo_sapiens_assembly38.fasta"
+hg38_fasta_index :   "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Homo_sapiens_assembly38.fasta.fai"
+hg38_fasta_dict :    "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Homo_sapiens_assembly38.dict"
+hg38_fasta_alt :     "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Homo_sapiens_assembly38.alt"
+hg38_fasta_sa :      "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Homo_sapiens_assembly38.sa"
+hg38_fasta_amb :     "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Homo_sapiens_assembly38.amb"
+hg38_fasta_bwt :     "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Homo_sapiens_assembly38.bwt"
+hg38_fasta_ann :     "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Homo_sapiens_assembly38.ann"
+hg38_fasta_pac :     "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Homo_sapiens_assembly38.pac"
+
+dbsnp :             "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Homo_sapiens_assembly38.dbsnp138.vcf"
+dbsnp_index :       "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Homo_sapiens_assembly38.dbsnp138.vcf.idx"
+indel_known :       "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Homo_sapiens_assembly38.known_indels.vcf.gz"
+indel_known_index : "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Homo_sapiens_assembly38.known_indels.vcf.gz.tbi"
+indel_mills :       "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz"
+indel_mills_index : "/projects/ps-gleesonlab3/RCIGM_WGS_NTD_samples/reference_files/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz.tbi"

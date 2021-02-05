@@ -1,0 +1,11 @@
+name: realign
+channels:
+        - bioconda
+dependencies:
+        - pysam
+        - "samtools>=1.3"
+        - "bwa>=0.7.15"
+        - java-1.8.0-openjdk-headless-cos7-s390x
+        - "picard>=2.16"
+        - "gatk4>=4.0.7"
+        - qualimap
