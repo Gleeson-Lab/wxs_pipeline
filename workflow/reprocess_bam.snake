@@ -47,7 +47,7 @@ rule extract_fastq_from_bam:
 	"""Extract the reads from a BAM into an interleaved FASTQ."""
 	input:
 		flag = "../scratch/{sample}/{sample}.split_bam.done",
-		bam = "../scratch/{sample}/{sample}_{rg}.bam"
+		bam = temp("../scratch/{sample}/{sample}_{rg}.bam")
 	output:
 		temp("../scratch/{sample}/{sample}_{rg}.fq")
 	shell:
@@ -79,7 +79,7 @@ def aggregate_read_groups(wildcards):
 	return expand("../scratch/{sample}/{sample}_reprocessed_{rg}.bam",
 			sample=wildcards.sample,
 			rg=glob_wildcards(
-				"../scratch/{sample}/{sample}_{{rg}}.bam".format(sample=wildcards.sample)).rg)
+				"../scratch/{sample}/{sample}_{{rg,\d+}}.bam".format(sample=wildcards.sample)).rg)
 
 rule mark_duplicates:
 	"""Mark PCR duplicates and merge per-RG BAMs."""
@@ -92,14 +92,14 @@ rule mark_duplicates:
 		memory_min = "20G",
 		memory_max = "24G"
 	run:
-		inputs = "-I:" + " -I:".join(input)
+		inputs = "--INPUT " + " --INPUT ".join(input)
 		shell("picard MarkDuplicates "
-				'--java-options "-Djava.io.tmpdir=../scratch/{sample} -Xms{memory_min} -Xmx{memory_max}" '
+				"-Djava.io.tmpdir=../scratch/{sample} -Xms{memory_min} -Xmx{memory_max} "
 				"{inputs} "
-				"--OUTPUT:{output_bam} "
-				"-METRICS_FILE:{output_metrics} "
+				"--OUTPUT {output_bam} "
+				"--METRICS_FILE {output_metrics} "
 				"--OPTICAL_DUPLICATE_PIXEL_DISTANCE 2500 "
-				"--VALIDATION_STRINGENCY=SILENT".format(
+				"--VALIDATION_STRINGENCY SILENT".format(
 					sample=wildcards["sample"],
 					memory_min=params["memory_min"],
 					memory_max=params["memory_max"],
