@@ -1,0 +1,152 @@
+configfile: "../config/config.yaml"
+localrules: get_read_groups
+# update config based on secondary configuration file
+from yaml import safe_load
+with open("../config/project.yaml") as project_fh:
+	config.update(safe_load(project_fh))
+
+reference_data = config["reference"][config["genome_build"]]
+
+wildcard_constraints:
+	sample="\d{10}(?:_ds)?", # samples are exclusively labeled as 10-digit integers so far
+	rg="\d+" # samtools labels as integers starting from 0
+
+def bams_by_read_group(wildcards):
+	read_groups = []
+	with open("../scratch/{sample}/{sample}.rgs".format(
+		sample=wildcards["sample"])) as rgs_fh:
+		for line in rgs_fh:
+			read_groups.append(line.split("\t")[1].split(":")[1])
+	return ["../scratch/{sample}/{sample}_{rg}.bam".format(
+		sample=wildcards["sample"], rg=read_group)
+		for read_group in read_groups]
+
+rule get_read_groups:
+	"""Extract the set of read groups from a BAM's header."""
+	input:
+		"../input/bams/{sample}.bam"
+	output:
+		"../scratch/{sample}/{sample}.rgs"
+	threads: 1
+	shell:
+		"samtools view -H {input} | grep '^@RG' > {output}"
+
+checkpoint rule split_bam:
+	"""Split a BAM by read group."""
+	input:
+		bam = "../input/bams/{sample}.bam",
+		rgs = "../scratch/{sample}/{sample}.rgs"
+	output:
+		touch("../scratch/{sample}/{sample}.split_bam.done")
+	threads: 1
+	shell:
+		"samtools split -f ../scratch/{wildcards.sample}/"
+		"{wildcards.sample}_%#.bam {input.bam}"
+
+rule extract_fastq_from_bam:
+	"""Extract the reads from a BAM into an interleaved FASTQ."""
+	input:
+		flag = "../scratch/{sample}/{sample}.split_bam.done",
+		bam = "../scratch/{sample}/{sample}_{rg}.bam"
+	output:
+		temp("../scratch/{sample}/{sample}_{rg}.fq")
+	shell:
+		"samtools fastq -0 /dev/null {input.bam} > {output}"
+
+rule bwa_align_and_sort:
+	"""Align a FASTQ of interleaved reads."""
+	input:
+		fq = "../scratch/{sample}/{sample}_{rg}.fq",
+		rgs = "../scratch/{sample}/{sample}.rgs"
+	output:
+		temp("../scratch/{sample}/{sample}_reprocessed_{rg}.bam")
+	threads: 16
+	shell:
+		'RG=$(sed -n "$(({wildcards.rg}+1))"'
+		"'s:\\t:\\\\t:gp' < {input.rgs}) && "
+		"bwa mem "
+		"-K 100000000 " # suggested for reproducibility
+		"-p " # interleaved reads
+		"-Y " # soft clipping of supplementary alignments
+		"-t {threads} "
+		'-R "$RG" '
+		"{reference_data[genome]} "
+		"{input.fq} "
+		"-Y "
+		"| samtools sort --threads {threads} -O BAM -o {output} -"
+
+def aggregate_read_groups(wildcards):
+	return expand("../scratch/{sample}/{sample}_reprocessed_{rg}.bam",
+			sample=wildcards.sample,
+			rg=glob_wildcards(
+				"../scratch/{sample}/{sample}_{{rg}}.bam".format(sample=wildcards.sample)).rg)
+
+rule mark_duplicates:
+	"""Mark PCR duplicates and merge per-RG BAMs."""
+	input:
+		aggregate_read_groups
+	output:
+		bam = temp("../scratch/{sample}/{sample}_markdup.bam"),
+		metrics = "../output/qc/{sample}_metrics.txt"
+	params:
+		memory_min = "20G",
+		memory_max = "24G"
+	run:
+		inputs = "-I:" + " -I:".join(input)
+		shell("picard MarkDuplicates "
+				'--java-options "-Djava.io.tmpdir=../scratch/{sample} -Xms{memory_min} -Xmx{memory_max}" '
+				"{inputs} "
+				"--OUTPUT:{output_bam} "
+				"-METRICS_FILE:{output_metrics} "
+				"--OPTICAL_DUPLICATE_PIXEL_DISTANCE 2500 "
+				"--VALIDATION_STRINGENCY=SILENT".format(
+					sample=wildcards["sample"],
+					memory_min=params["memory_min"],
+					memory_max=params["memory_max"],
+					inputs=inputs,
+					output_bam=output["bam"],
+					output_metrics=output["metrics"]))
+
+rule base_recalibration:
+	input:
+		"../scratch/{sample}/{sample}_markdup.bam"
+	output:
+		"../output/recal_tables/{sample}_recal.table"
+	params:
+		memory = "24G",
+	shell:
+		"gatk "
+		'--java-options "-Djava.io.tmpdir=../scratch/{wildcards.sample} -Xms{params.memory}" '
+		"BaseRecalibrator "
+		"-R {reference_data[genome]} "
+		"-I {input} "
+		"--known-sites {reference_data[dbsnp]} "
+		"--known-sites {reference_data[indel_mills]} "
+		"--known-sites {reference_data[indel_known]} "
+		"-O {output}"
+
+rule apply_BQSR:
+	input:
+		bam = "../scratch/{sample}/{sample}_markdup.bam",
+		recal_table = "../output/recal_tables/{sample}_recal.table"
+	output:
+		bam = "../output/bams/{sample}.bam",
+		bai = "../output/bams/{sample}.bai"
+	params:
+		memory = "24G"
+	log:
+		stdout = "../output/logs/apply_BQSR/{sample}.out",
+		stderr = "../output/logs/apply_BQSR/{sample}.err"
+	shell:
+		"gatk "
+		'--java-options "-Djava.io.tmpdir=../scratch/{wildcards.sample} -Xms{params.memory}" '
+		"ApplyBQSR "
+		"-R {reference_data[genome]} "
+		"-I {input.bam} "
+		"-O {output.bam} "
+		"-bqsr {input.recal_table} "
+		"--static-quantized-quals 10 "
+		"--static-quantized-quals 20 "
+		"--static-quantized-quals 30 "
+		"--add-output-sam-program-record "
+		"--create-output-bam-md5 "
