@@ -1,6 +1,7 @@
 configfile: "../config/config.yaml"
 localrules: get_read_groups
 # update config based on secondary configuration file
+import os
 from yaml import safe_load
 with open("../config/project.yaml") as project_fh:
 	config.update(safe_load(project_fh))
@@ -47,7 +48,7 @@ rule extract_fastq_from_bam:
 	"""Extract the reads from a BAM into an interleaved FASTQ."""
 	input:
 		flag = "../scratch/{sample}/{sample}.split_bam.done",
-		bam = temp("../scratch/{sample}/{sample}_{rg}.bam")
+		bam = "../scratch/{sample}/{sample}_{rg}.bam"
 	output:
 		temp("../scratch/{sample}/{sample}_{rg}.fq")
 	shell:
@@ -76,10 +77,14 @@ rule bwa_align_and_sort:
 		"| samtools sort --threads {threads} -O BAM -o {output} -"
 
 def aggregate_read_groups(wildcards):
+	split_bams_directory = os.path.dirname(
+			checkpoints.split_bam.get(**wildcards).output[0])
 	return expand("../scratch/{sample}/{sample}_reprocessed_{rg}.bam",
 			sample=wildcards.sample,
 			rg=glob_wildcards(
-				"../scratch/{sample}/{sample}_{{rg,\d+}}.bam".format(sample=wildcards.sample)).rg)
+				"{split_bams_directory}/{sample}_{{rg,\d+}}.bam".format(
+					split_bams_directory=split_bams_directory,
+					sample=wildcards.sample)).rg)
 
 rule mark_duplicates:
 	"""Mark PCR duplicates and merge per-RG BAMs."""
