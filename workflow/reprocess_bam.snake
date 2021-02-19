@@ -29,6 +29,8 @@ rule get_read_groups:
 	output:
 		"../scratch/{sample}/{sample}.rgs"
 	threads: 1
+	conda:
+		"envs/bwa_samtools.yaml"
 	shell:
 		"samtools view -H {input} | grep '^@RG' > {output}"
 
@@ -40,6 +42,8 @@ checkpoint rule split_bam:
 	output:
 		touch("../scratch/{sample}/{sample}.split_bam.done")
 	threads: 1
+	conda:
+		"envs/bwa_samtools.yaml"
 	shell:
 		"samtools split -f ../scratch/{wildcards.sample}/"
 		"{wildcards.sample}_%#.bam {input.bam}"
@@ -51,6 +55,8 @@ rule extract_fastq_from_bam:
 		bam = "../scratch/{sample}/{sample}_{rg}.bam"
 	output:
 		temp("../scratch/{sample}/{sample}_{rg}.fq")
+	conda:
+		"envs/bwa_samtools.yaml"
 	shell:
 		"samtools fastq -0 /dev/null {input.bam} > {output}"
 
@@ -62,6 +68,8 @@ rule bwa_align_and_sort:
 	output:
 		temp("../scratch/{sample}/{sample}_reprocessed_{rg}.bam")
 	threads: 16
+	conda:
+		"envs/bwa_samtools.yaml"
 	shell:
 		'RG=$(sed -n "$(({wildcards.rg}+1))"'
 		"'s:\\t:\\\\t:gp' < {input.rgs}) && "
@@ -96,21 +104,16 @@ rule mark_duplicates:
 	params:
 		memory_min = "20G",
 		memory_max = "24G"
-	run:
-		inputs = "--INPUT " + " --INPUT ".join(input)
-		shell("picard MarkDuplicates "
-				"-Djava.io.tmpdir=../scratch/{sample} -Xms{memory_min} -Xmx{memory_max} "
-				"{inputs} "
-				"--OUTPUT {output_bam} "
-				"--METRICS_FILE {output_metrics} "
-				"--OPTICAL_DUPLICATE_PIXEL_DISTANCE 2500 "
-				"--VALIDATION_STRINGENCY SILENT".format(
-					sample=wildcards["sample"],
-					memory_min=params["memory_min"],
-					memory_max=params["memory_max"],
-					inputs=inputs,
-					output_bam=output["bam"],
-					output_metrics=output["metrics"]))
+	conda:
+		"envs/picard.yaml"
+	shell:
+		"picard MarkDuplicates "
+		"-Djava.io.tmpdir=../scratch/{wildcards.sample} -Xms{params.memory_min} -Xmx{params.memory_max} "
+		"--INPUT $(echo {input} | sed 's: : --INPUT :g') "
+		"--OUTPUT {output.bam} "
+		"--METRICS_FILE {output.metrics} "
+		"--OPTICAL_DUPLICATE_PIXEL_DISTANCE 2500 "
+		"--VALIDATION_STRINGENCY SILENT"
 
 rule base_recalibration:
 	input:
@@ -119,6 +122,8 @@ rule base_recalibration:
 		"../output/recal_tables/{sample}_recal.table"
 	params:
 		memory = "24G",
+	conda:
+		"envs/gatk.yaml"
 	shell:
 		"gatk "
 		'--java-options "-Djava.io.tmpdir=../scratch/{wildcards.sample} -Xms{params.memory}" '
@@ -142,6 +147,8 @@ rule apply_BQSR:
 	log:
 		stdout = "../output/logs/apply_BQSR/{sample}.out",
 		stderr = "../output/logs/apply_BQSR/{sample}.err"
+	conda:
+		"envs/gatk.yaml"
 	shell:
 		"gatk "
 		'--java-options "-Djava.io.tmpdir=../scratch/{wildcards.sample} -Xms{params.memory}" '

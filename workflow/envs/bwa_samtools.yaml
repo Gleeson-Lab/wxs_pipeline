@@ -1,0 +1,6 @@
+name: bwa_samtools
+channels:
+  - bioconda
+dependencies:
+  - bwa=0.7.17
+  - samtools=1.9
