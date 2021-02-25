@@ -1,5 +1,5 @@
 configfile: "../config/config.yaml"
-localrules: get_read_groups
+localrules: all, get_read_groups
 # update config based on secondary configuration file
 import os
 from yaml import safe_load
@@ -28,7 +28,6 @@ rule get_read_groups:
 		"../input/bams/{sample}.bam"
 	output:
 		"../scratch/{sample}/{sample}.rgs"
-	threads: 1
 	conda:
 		"envs/bwa_samtools.yaml"
 	shell:
@@ -41,7 +40,9 @@ checkpoint rule split_bam:
 		rgs = "../scratch/{sample}/{sample}.rgs"
 	output:
 		touch("../scratch/{sample}/{sample}.split_bam.done")
-	threads: 1
+	log:
+		stdout = "../logs/split_bam/{sample}.out",
+		stderr = "../logs/split_bam/{sample}.err"
 	conda:
 		"envs/bwa_samtools.yaml"
 	shell:
@@ -55,6 +56,9 @@ rule extract_fastq_from_bam:
 		bam = "../scratch/{sample}/{sample}_{rg}.bam"
 	output:
 		temp("../scratch/{sample}/{sample}_{rg}.fq")
+	log:
+		stdout = "../logs/extract_fastqs/{sample}_{rg}.out",
+		stderr = "../logs/extract_fastqs/{sample}_{rg}.err"
 	conda:
 		"envs/bwa_samtools.yaml"
 	shell:
@@ -67,7 +71,10 @@ rule bwa_align_and_sort:
 		rgs = "../scratch/{sample}/{sample}.rgs"
 	output:
 		temp("../scratch/{sample}/{sample}_reprocessed_{rg}.bam")
-	threads: 16
+	threads: 8
+	log:
+		stdout = "../logs/bwa/{sample}_{rg}.out",
+		stderr = "../logs/bwa/{sample}_{rg}.err"
 	conda:
 		"envs/bwa_samtools.yaml"
 	shell:
@@ -103,12 +110,17 @@ rule mark_duplicates:
 		metrics = "../output/qc/{sample}_metrics.txt"
 	params:
 		memory_min = "20G",
-		memory_max = "24G"
+		memory_max = "24G" #jvm
+	resources:
+		mem = "32gb" #cluster
+	log:
+		stdout = "../logs/mark_duplicates/{sample}.out",
+		stderr = "../logs/mark_duplicates/{sample}.err"
 	conda:
 		"envs/picard.yaml"
 	shell:
 		"picard MarkDuplicates "
-		"-Djava.io.tmpdir=../scratch/{wildcards.sample} -Xms{params.memory_min} -Xmx{params.memory_max} "
+		"-Djava.io.tmpdir=$TMPDIR -Xms{params.memory_min} -Xmx{params.memory_max} "
 		"--INPUT $(echo {input} | sed 's: : --INPUT :g') "
 		"--OUTPUT {output.bam} "
 		"--METRICS_FILE {output.metrics} "
@@ -121,7 +133,12 @@ rule base_recalibration:
 	output:
 		"../output/recal_tables/{sample}_recal.table"
 	params:
-		memory = "24G",
+		memory = "24G" #jvm
+	resources:
+		mem = "32gb" #cluster
+	log:
+		stdout = "../logs/base_recalibration/{sample}.out",
+		stderr = "../logs/base_recalibration/{sample}.err"
 	conda:
 		"envs/gatk.yaml"
 	shell:
@@ -143,15 +160,17 @@ rule apply_BQSR:
 		bam = "../output/bams/{sample}.bam",
 		bai = "../output/bams/{sample}.bai"
 	params:
-		memory = "24G"
+		memory = "24G" #jvm
+	resources:
+		mem = "32gb" #cluster
 	log:
-		stdout = "../output/logs/apply_BQSR/{sample}.out",
-		stderr = "../output/logs/apply_BQSR/{sample}.err"
+		stdout = "../logs/apply_BQSR/{sample}.out",
+		stderr = "../logs/apply_BQSR/{sample}.err"
 	conda:
 		"envs/gatk.yaml"
 	shell:
 		"gatk "
-		'--java-options "-Djava.io.tmpdir=../scratch/{wildcards.sample} -Xms{params.memory}" '
+		'--java-options "-Djava.io.tmpdir=$TMPDIR -Xms{params.memory}" '
 		"ApplyBQSR "
 		"-R {reference_data[genome]} "
 		"-I {input.bam} "
