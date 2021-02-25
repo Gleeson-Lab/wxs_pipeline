@@ -40,7 +40,7 @@ checkpoint rule split_bam:
 		rgs = "../scratch/{sample}/{sample}.rgs"
 	output:
 		touch("../scratch/{sample}/{sample}.split_bam.done")
-	log:
+	params:
 		stdout = "../logs/split_bam/{sample}.out",
 		stderr = "../logs/split_bam/{sample}.err"
 	conda:
@@ -56,7 +56,7 @@ rule extract_fastq_from_bam:
 		bam = "../scratch/{sample}/{sample}_{rg}.bam"
 	output:
 		temp("../scratch/{sample}/{sample}_{rg}.fq")
-	log:
+	params:
 		stdout = "../logs/extract_fastqs/{sample}_{rg}.out",
 		stderr = "../logs/extract_fastqs/{sample}_{rg}.err"
 	conda:
@@ -72,7 +72,7 @@ rule bwa_align_and_sort:
 	output:
 		temp("../scratch/{sample}/{sample}_reprocessed_{rg}.bam")
 	threads: 8
-	log:
+	params:
 		stdout = "../logs/bwa/{sample}_{rg}.out",
 		stderr = "../logs/bwa/{sample}_{rg}.err"
 	conda:
@@ -113,7 +113,7 @@ rule mark_duplicates:
 		memory_max = "24G" #jvm
 	resources:
 		mem = "32gb" #cluster
-	log:
+	params:
 		stdout = "../logs/mark_duplicates/{sample}.out",
 		stderr = "../logs/mark_duplicates/{sample}.err"
 	conda:
@@ -136,7 +136,7 @@ rule base_recalibration:
 		memory = "24G" #jvm
 	resources:
 		mem = "32gb" #cluster
-	log:
+	params:
 		stdout = "../logs/base_recalibration/{sample}.out",
 		stderr = "../logs/base_recalibration/{sample}.err"
 	conda:
@@ -162,8 +162,9 @@ rule apply_BQSR:
 	params:
 		memory = "24G" #jvm
 	resources:
-		mem = "32gb" #cluster
-	log:
+		mem = "32gb", #cluster
+		mail = "ae" # send an email when finished as this is the last step
+	params:
 		stdout = "../logs/apply_BQSR/{sample}.out",
 		stderr = "../logs/apply_BQSR/{sample}.err"
 	conda:
