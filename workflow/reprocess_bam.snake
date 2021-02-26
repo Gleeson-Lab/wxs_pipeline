@@ -110,12 +110,11 @@ rule mark_duplicates:
 		metrics = "../output/qc/{sample}_metrics.txt"
 	params:
 		memory_min = "20G",
-		memory_max = "24G" #jvm
-	resources:
-		mem = "32gb" #cluster
-	params:
+		memory_max = "24G", #jvm
 		stdout = "../logs/mark_duplicates/{sample}.out",
 		stderr = "../logs/mark_duplicates/{sample}.err"
+	resources:
+		mem = "32gb" #cluster
 	conda:
 		"envs/picard.yaml"
 	shell:
@@ -133,12 +132,11 @@ rule base_recalibration:
 	output:
 		"../output/recal_tables/{sample}_recal.table"
 	params:
-		memory = "24G" #jvm
-	resources:
-		mem = "32gb" #cluster
-	params:
+		memory = "24G", #jvm
 		stdout = "../logs/base_recalibration/{sample}.out",
 		stderr = "../logs/base_recalibration/{sample}.err"
+	resources:
+		mem = "32gb" #cluster
 	conda:
 		"envs/gatk.yaml"
 	shell:
@@ -160,13 +158,12 @@ rule apply_BQSR:
 		bam = "../output/bams/{sample}.bam",
 		bai = "../output/bams/{sample}.bai"
 	params:
-		memory = "24G" #jvm
+		memory = "24G", #jvm
+		stdout = "../logs/apply_BQSR/{sample}.out",
+		stderr = "../logs/apply_BQSR/{sample}.err"
 	resources:
 		mem = "32gb", #cluster
 		mail = "ae" # send an email when finished as this is the last step
-	params:
-		stdout = "../logs/apply_BQSR/{sample}.out",
-		stderr = "../logs/apply_BQSR/{sample}.err"
 	conda:
 		"envs/gatk.yaml"
 	shell:
