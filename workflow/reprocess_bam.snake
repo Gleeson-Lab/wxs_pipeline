@@ -141,7 +141,7 @@ rule base_recalibration:
 		"envs/gatk.yaml"
 	shell:
 		"gatk "
-		'--java-options "-Djava.io.tmpdir=../scratch/{wildcards.sample} -Xms{params.memory}" '
+		'--java-options "-Djava.io.tmpdir=$TMPDIR -Xms{params.memory}" '
 		"BaseRecalibrator "
 		"-R {reference_data[genome]} "
 		"-I {input} "
