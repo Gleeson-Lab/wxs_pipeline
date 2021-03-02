@@ -10,7 +10,8 @@ reference_data = config["reference"][config["genome_build"]]
 
 wildcard_constraints:
 	sample="\d{10}(?:_ds)?", # samples are exclusively labeled as 10-digit integers so far
-	rg="\d+" # samtools labels as integers starting from 0
+	rg="\d+", # samtools labels as integers starting from 0
+	group="\d+"
 
 def bams_by_read_group(wildcards):
 	read_groups = []
@@ -89,7 +90,8 @@ rule bwa_align_and_sort:
 		"{reference_data[genome]} "
 		"{input.fq} "
 		"-Y "
-		"| samtools sort --threads {threads} -O BAM -o {output} -"
+		"| samtools sort -T $TMPDIR "
+		"--threads {threads} -O BAM -o {output} -"
 
 def aggregate_read_groups(wildcards):
 	split_bams_directory = os.path.dirname(
@@ -179,3 +181,53 @@ rule apply_BQSR:
 		"--static-quantized-quals 30 "
 		"--add-output-sam-program-record "
 		"--create-output-bam-md5 "
+
+rule haplotype_caller:
+	input:
+		bam = "../output/bams/{sample}.bam",
+		interval_file = "../resources/intervals/intervalfile_{group}.list" # parallelization - currently 120x
+	output:
+		"../scratch/{sample}/{sample}_{group}.g.vcf.gz"
+	params:
+		memory = "6G",
+		stdout = "../logs/haplotype_caller/{sample}_{group}.out",
+		stderr = "../logs/haplotype_caller/{sample}_{group}.err"
+	resources:
+		mem = "12gb"
+	conda:
+		"envs/gatk.yaml"
+	shell:
+		"gatk "
+		'--java-options "-Djava.io.tmpdir=$TMPDIR -Xms{params.memory}" '
+		"HaplotypeCaller "
+		"-R {reference_data[genome]} "
+		"-I {input.bam} "
+		"-L {input.interval_file} "
+		"-O {output} "
+		"-GQB 10 -GQB 20 -GQB 30 -GQB 40 -GQB 50 "
+		"-GQB 60 -GQB 70 -GQB 80 -GQB 90 "
+		"-ERC GVCF "
+		"-G StandardAnnotation "
+		"-G AS_StandardAnnotation "
+		"-G StandardHCAnnotation "
+
+rule merge_gvcfs:
+	input:
+		expand("../scratch/{sample}/{sample}_{group}.g.vcf.gz",
+				sample=wildcards.sample,
+				group=sorted(
+					[int(value) for value in glob_wildcards(
+					"../resources/intervals/intervalfile_{group,\d+}.list").group]))
+	output:
+		"../output/gvcfs/{sample}.g.vcf.gz"
+	params:
+		memory = "12G",
+		stdout = "../logs/merge_gvcfs/{sample}.out",
+		stderr = "../logs/merge_vcfs/{sample}.err"
+	conda:
+		"envs/picard.yaml"
+	shell:
+		"picard MergeVcfs "
+		"-Djava.io.tmpdir=$TMPDIR -Xmx{params.memory} "
+		"--INPUT $(echo {input} | sed 's: : --INPUT :g') "
+		"--output {output}"
