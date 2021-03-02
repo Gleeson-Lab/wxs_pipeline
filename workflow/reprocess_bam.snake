@@ -213,8 +213,7 @@ rule haplotype_caller:
 
 rule merge_gvcfs:
 	input:
-		expand("../scratch/{sample}/{sample}_{group}.g.vcf.gz",
-				sample=wildcards.sample,
+		expand("../scratch/{{sample}}/{{sample}}_{group}.g.vcf.gz",
 				group=sorted(
 					[int(value) for value in glob_wildcards(
 					"../resources/intervals/intervalfile_{group,\d+}.list").group]))
