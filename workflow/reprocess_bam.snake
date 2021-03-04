@@ -78,13 +78,13 @@ rule bwa_align_and_sort:
 		temp("../scratch/{sample}/{sample}_reprocessed_{rg}.bam")
 	threads: 8
 	params:
+		rg = lambda wildcards: int(wildcards.rg) + 1,
 		stdout = "../logs/bwa/{sample}_{rg}.out",
 		stderr = "../logs/bwa/{sample}_{rg}.err"
 	conda:
 		"envs/bwa_samtools.yaml"
 	shell:
-		'RG=$(sed -n "$(({wildcards.rg}+1))"'
-		"'s:\\t:\\\\t:gp' < {input.rgs}) && "
+		"RG=$(sed -n '{params.rg} s:\\t:\\\\t:gp' < {input.rgs}) && "
 		"bwa mem "
 		"-K 100000000 " # suggested for reproducibility
 		"-p " # interleaved reads
@@ -115,6 +115,7 @@ rule mark_duplicates:
 		bam = temp("../scratch/{sample}/{sample}_markdup.bam"),
 		metrics = "../output/qc/{sample}_metrics.txt"
 	params:
+		inputs = lambda input: "--INPUT " + " --INPUT ".join(input),
 		memory_min = "20G",
 		memory_max = "24G", #jvm
 		stdout = "../logs/mark_duplicates/{sample}.out",
@@ -126,7 +127,7 @@ rule mark_duplicates:
 	shell:
 		"picard MarkDuplicates "
 		"-Djava.io.tmpdir=$TMPDIR -Xms{params.memory_min} -Xmx{params.memory_max} "
-		"--INPUT $(echo {input} | sed 's: : --INPUT :g') "
+		"{params.inputs} "
 		"--OUTPUT {output.bam} "
 		"--METRICS_FILE {output.metrics} "
 		"--OPTICAL_DUPLICATE_PIXEL_DISTANCE 2500 "
@@ -224,6 +225,7 @@ rule merge_gvcfs:
 	output:
 		"../output/gvcfs/{sample}.g.vcf.gz"
 	params:
+		inputs = lambda input: "--INPUT " + " --INPUT ".join(input),
 		memory = "12G",
 		stdout = "../logs/merge_gvcfs/{sample}.out",
 		stderr = "../logs/merge_gvcfs/{sample}.err"
@@ -234,7 +236,7 @@ rule merge_gvcfs:
 	shell:
 		"picard MergeVcfs "
 		"-Djava.io.tmpdir=$TMPDIR -Xmx{params.memory} "
-		"--INPUT $(echo {input} | sed 's: : --INPUT :g') "
+		"{params.inputs} "
 		"--OUTPUT {output}"
 
 rule genomics_db_import:
@@ -245,6 +247,7 @@ rule genomics_db_import:
 	output:
 		directory("../scratch/genomics_db_{group}")
 	params:
+		inputs = lambda input: "-V " + " -V ".join(input.gvcfs),
 		stdout = "../logs/genomics_db_import/{group}.out",
 		stderr = "../logs/genomics_db_import/{group}.err"
 	conda:
@@ -253,7 +256,7 @@ rule genomics_db_import:
 		"gatk "
 		'--java-options "-Djava.io.tmpdir=$TMPDIR" '
 		"GenomicsDBImport "
-		"-V $(echo {input.gvcfs} | sed 's: : -V :g') "
+		"{params.inputs} "
 		"--genomicsdb-workspace-path {output} "
 		"--tmp-dir $TMPDIR "
 		"-L {input.interval_file}"
@@ -395,6 +398,7 @@ rule merge_vcfs:
 	output:
 		"../output/joint_vcf/final.vcf.gz"
 	params:
+		inputs = lambda input: "--INPUT " + " --INPUT ".join(input),
 		stdout = "../logs/merge_vcfs/final.out",
 		stderr = "../logs/merge_vcfs/final.err"
 	resources:
@@ -406,5 +410,5 @@ rule merge_vcfs:
 		'--java-options "-Djava.io.tmpdir=$TMPDIR" '
 		"GatherVcfs "
 		"--TMP_DIR $TMPDIR "
-		"--INPUT $(echo {input} | sed 's: : --INPUT :g') "
+		"{params.inputs} "
 		"--OUTPUT {output}"
