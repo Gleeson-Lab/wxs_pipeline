@@ -8,6 +8,10 @@ with open("../config/project.yaml") as project_fh:
 
 reference_data = config["reference"][config["genome_build"]]
 
+def get_samples(samples_file="samples.list"):
+	with open(samples_file) as samples_fh:
+		return [sample.strip() for sample in samples_fh.read().splitlines()]
+
 wildcard_constraints:
 	sample="\d{10}(?:_ds)?", # samples are exclusively labeled as 10-digit integers so far
 	rg="\d+", # samtools labels as integers starting from 0
@@ -187,7 +191,7 @@ rule haplotype_caller:
 		bam = "../output/bams/{sample}.bam",
 		interval_file = "../resources/intervals/intervalfile_{group}.list" # parallelization - currently 120x
 	output:
-		"../scratch/{sample}/{sample}_{group}.g.vcf.gz"
+		"../scratch/{sample}/gvcfs/{sample}_{group}.g.vcf.gz"
 	params:
 		memory = "6G",
 		stdout = "../logs/haplotype_caller/{sample}_{group}.out",
@@ -213,7 +217,7 @@ rule haplotype_caller:
 
 rule merge_gvcfs:
 	input:
-		expand("../scratch/{{sample}}/{{sample}}_{group}.g.vcf.gz",
+		expand("../scratch/{{sample}}/gvcfs/{{sample}}_{group}.g.vcf.gz",
 				group=sorted(
 					[int(value) for value in glob_wildcards(
 					"../resources/intervals/intervalfile_{group,\d+}.list").group]))
@@ -222,11 +226,185 @@ rule merge_gvcfs:
 	params:
 		memory = "12G",
 		stdout = "../logs/merge_gvcfs/{sample}.out",
-		stderr = "../logs/merge_vcfs/{sample}.err"
+		stderr = "../logs/merge_gvcfs/{sample}.err"
+	resources:
+		mail = "ae"
 	conda:
 		"envs/picard.yaml"
 	shell:
 		"picard MergeVcfs "
 		"-Djava.io.tmpdir=$TMPDIR -Xmx{params.memory} "
 		"--INPUT $(echo {input} | sed 's: : --INPUT :g') "
-		"--output {output}"
+		"--OUTPUT {output}"
+
+rule genomics_db_import:
+	input:
+		gvcfs = expand("../scratch/{sample}/gvcfs/{sample}_{{group}}.g.vcf.gz",
+				sample=get_samples()),
+		interval_file = "../resources/intervals/intervalfile_{group}.list"
+	output:
+		directory("../scratch/genomics_db_{group}")
+	params:
+		stdout = "../logs/genomics_db_import/{group}.out",
+		stderr = "../logs/genomics_db_import/{group}.err"
+	conda:
+		"envs/gatk.yaml"
+	shell:
+		"gatk "
+		'--java-options "-Djava.io.tmpdir=$TMPDIR" '
+		"GenomicsDBImport "
+		"-V $(echo {input.gvcfs} | sed 's: : -V :g') "
+		"--genomicsdb-workspace-path {output} "
+		"--tmp-dir $TMPDIR "
+		"-L {input.interval_file}"
+
+rule genotype_gvcfs:
+	input:
+		genomics_db = "../scratch/genomics_db_{group}",
+		interval_file = "../resources/intervals/intervalfile_{group}.list"
+	output:
+		temp("../scratch/vcfs/{group}.vcf")
+	params:
+		stdout = "../logs/genotype_gvcfs/{group}.out",
+		stderr = "../logs/genotype_gvcfs/{group}.err"
+	conda:
+		"envs/gatk.yaml"
+	shell:
+		"gatk "
+		'--java-options "-Djava.io.tmpdir=$TMPDIR" '
+		"GenotypeGVCFs "
+		"-R {reference_data[genome]} "
+		"-V gendb://{input.genomics_db} "
+		"-D {reference_data[dbsnp]} "
+		"-G StandardAnnotation "
+		"-G AS_StandardAnnotation "
+		"-G StandardHCAnnotation "
+		"-L {input.interval_file} "
+		"--only-output-calls-starting-in-intervals "
+		"-O {output}"
+
+rule snp_recalibration:
+	input:
+		vcf = "../scratch/vcfs/{group}.vcf",
+		interval_file = "../resources/intervals/intervalfile_{group}.list"
+	output:
+		recal = temp("../scratch/recal/{group}_snps.recal"),
+		tranches = temp("../scratch/recal/{group}_snps.tranches")
+	params:
+		stdout = "../logs/snp_recalibration/{group}.out",
+		stderr = "../logs/snp_recalibration/{group}.err"
+	conda:
+		"envs/gatk.yaml"
+	shell:
+		"gatk "
+		'--java-options "-Djava.io.tmpdir=$TMPDIR" '
+		"VariantRecalibrator "
+		"-V {input.vcf} "
+		"-R {reference_data[genome]} "
+		"--resource hapmap,known=false,training=true,truth=true,prior=15.0:{reference_data[hapmap]} "
+		"--resource omni,known=false,training=true,truth=false,prior=12.0:{reference_data[omni]} "
+		"--resource 1000G,known=false,training=true,truth=false,prior=10.0:{reference_data[onekg]} "
+		"--resource dbsnp,known=true,training=false,truth=false,prior=2.0:{reference_data[dbsnp]} "
+		"-an QD -an MQ -an MQRankSum -an ReadPosRankSum -an SOR -an DP "
+		"-mode SNP -AS "
+		"-O {output.recal} "
+		"--tranches-file {output.tranches}"
+
+rule apply_snp_recalibration:
+	input:
+		vcf = "../scratch/vcfs/{group}.vcf",
+		recal = "../scratch/recal/{group}_snps.recal",
+		tranches = "../scratch/recal/{group}_snps.tranches",
+	output:
+		temp("../scratch/vcfs/{group}_recal_snp.vcf")
+	params:
+		stdout = "../logs/apply_snp_recalibration/{group}.out",
+		stderr = "../logs/apply_snp_recalibration/{group}.err"
+	conda:
+		"envs/gatk.yaml"
+	shell:
+		"gatk "
+		'--java-options "-Djava.io.tmpdir=$TMPDIR" '
+		"ApplyVQSR "
+		"-R {reference_data[genome]} "
+		"-V {input.vcf} "
+		"--recal-file {input.recal} "
+		"--tranches-file {input.tranches} "
+		"--mode SNP -AS "
+		"-O {output}"
+
+rule indel_recalibration:
+	input:
+		vcf = "../scratch/vcfs/{group}_recal_snp.vcf"
+	output:
+		recal = temp("../scratch/recal/{group}_indels.recal"),
+		tranches = temp("../scratch/recal/{group}_indels.tranches")
+	params:
+		stdout = "../logs/indel_recalibration/{group}.out",
+		stderr = "../logs/indel_recalibration/{group}.err"
+	conda:
+		"envs/gatk.yaml"
+	shell:
+		"gatk "
+		'--java-options "-Djava.io.tmpdir=$TMPDIR" '
+		"VariantRecalibrator "
+		"-V {input.vcf} "
+		"--resource mills,known=false,training=true,truth=true,prior=12.0:{reference_data[indel_mills]} "
+		"--resource "
+		"-an QD -an MQRankSum -an ReadPosRankSum -an SOR -an DP -an FS "
+		"-mode INDEL -AS --max-gaussians 4 "
+		"-O {output.recal} "
+		"--tranches-file {output.tranches} "
+		"--resource mills,known=false,training=true,truth=true,prior=12.0:{reference_data[indel_mills]} "
+		"--resource axiom,known=false,training=true,truth=false,prior=10.0:{reference_data[axiom]} "
+		"--resource dbsnp,known=true,training=false,truth=false,prior=2.0:{reference_data[dbsnp]} "
+		"-an QD -an MQ -an MQRankSum -an ReadPosRankSum -an SOR -an DP "
+		"-mode SNP -AS "
+		"-O {output.recal} "
+		"--tranches-file {output.tranches}"
+
+rule apply_indel_recalibration:
+	input:
+		vcf = "../scratch/vcfs/{group}_recal_snp.vcf",
+		recal = "../scratch/recal/{group}_indels.recal",
+		tranches = "../scratch/recal/{group}_indels.tranches"
+	output:
+		temp("../scratch/vcfs/{group}.recal.vcf")
+	params:
+		stdout = "../logs/apply_indel_recalibration/{group}.out",
+		stderr = "../logs/apply_indel_recalibration/{group}.err"
+	conda:
+		"envs/gatk.yaml"
+	shell:
+		"gatk "
+		'--java-options "-Djava.io.tmpdir=$TMPDIR" '
+		"ApplyVQSR "
+		"-R {reference_data[genome]} "
+		"-V {input.vcf "
+		"--recal-file {input.recal} "
+		"--tranches-file {input.tranches} "
+		"--mode INDEL -AS "
+		"-O {output} "
+
+rule merge_vcfs:
+	input:
+		expand("../scratch/vcfs/{group}.recal.vcf",
+				group=sorted(
+					[int(value) for value in glob_wildcards(
+						"../resources/intervals/intervalfile_{group,\d+}.list").group]))
+	output:
+		"../output/joint_vcf/final.vcf.gz"
+	params:
+		stdout = "../logs/merge_vcfs/final.out",
+		stderr = "../logs/merge_vcfs/final.err"
+	resources:
+		mail = "ae"
+	conda:
+		"envs/gatk.yaml"
+	shell:
+		"gatk "
+		'--java-options "-Djava.io.tmpdir=$TMPDIR" '
+		"GatherVcfs "
+		"--TMP_DIR $TMPDIR "
+		"--INPUT $(echo {input} | sed 's: : --INPUT :g') "
+		"--OUTPUT {output}"
