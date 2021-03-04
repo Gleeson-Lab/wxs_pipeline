@@ -115,7 +115,7 @@ rule mark_duplicates:
 		bam = temp("../scratch/{sample}/{sample}_markdup.bam"),
 		metrics = "../output/qc/{sample}_metrics.txt"
 	params:
-		inputs = lambda input: "--INPUT " + " --INPUT ".join(input),
+		inputs = lambda wildcards, input: "--INPUT " + " --INPUT ".join(input),
 		memory_min = "20G",
 		memory_max = "24G", #jvm
 		stdout = "../logs/mark_duplicates/{sample}.out",
@@ -225,7 +225,7 @@ rule merge_gvcfs:
 	output:
 		"../output/gvcfs/{sample}.g.vcf.gz"
 	params:
-		inputs = lambda input: "--INPUT " + " --INPUT ".join(input),
+		inputs = lambda wildcards, input: "--INPUT " + " --INPUT ".join(input),
 		memory = "12G",
 		stdout = "../logs/merge_gvcfs/{sample}.out",
 		stderr = "../logs/merge_gvcfs/{sample}.err"
@@ -247,7 +247,7 @@ rule genomics_db_import:
 	output:
 		directory("../scratch/genomics_db_{group}")
 	params:
-		inputs = lambda input: "-V " + " -V ".join(input.gvcfs),
+		inputs = lambda wildcards, input: "-V " + " -V ".join(input.gvcfs),
 		stdout = "../logs/genomics_db_import/{group}.out",
 		stderr = "../logs/genomics_db_import/{group}.err"
 	conda:
@@ -398,7 +398,7 @@ rule merge_vcfs:
 	output:
 		"../output/joint_vcf/final.vcf.gz"
 	params:
-		inputs = lambda input: "--INPUT " + " --INPUT ".join(input),
+		inputs = lambda wildcards, input: "--INPUT " + " --INPUT ".join(input),
 		stdout = "../logs/merge_vcfs/final.out",
 		stderr = "../logs/merge_vcfs/final.err"
 	resources:
