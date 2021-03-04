@@ -2,7 +2,11 @@ email: "brcopeland@ucsd.edu"
 #reference files - don't change unless you have a good reason to do so, change genome_build variable instead
 reference:
         hg38:
+                axiom: "../resources/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz"
                 genome: "../resources/Homo_sapiens_assembly38.fasta"
                 dbsnp: "../resources/Homo_sapiens_assembly38.dbsnp138.vcf"
+                hapmap: "../resources/hapmap_3.3.hg38.vcf.gz"
                 indel_mills: "../resources/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz"
                 indel_known: "../resources/Homo_sapiens_assembly38.known_indels.vcf.gz"
+                omni: "../resources/1000G_omni2.5.hg38.vcf.gz"
+                onekg: "../resources/1000G_phase1.snps.high_confidence.hg38.vcf.gz"
