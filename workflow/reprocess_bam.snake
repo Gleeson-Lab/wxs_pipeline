@@ -81,6 +81,9 @@ rule bwa_align_and_sort:
 		rg = lambda wildcards: int(wildcards.rg) + 1,
 		stdout = "../logs/bwa/{sample}_{rg}.out",
 		stderr = "../logs/bwa/{sample}_{rg}.err"
+	resources:
+		walltime = "16:00:00",
+		queue = "hotel" # longer run-time
 	conda:
 		"envs/bwa_samtools.yaml"
 	shell:
@@ -116,17 +119,18 @@ rule mark_duplicates:
 		metrics = "../output/qc/{sample}_metrics.txt"
 	params:
 		inputs = lambda wildcards, input: "--INPUT " + " --INPUT ".join(input),
-		memory_min = "20G",
-		memory_max = "24G", #jvm
+		#memory_min = "20G",  -- doesn't seem to be necessary to give so much memory
+		#memory_max = "24G", #jvm
+		memory_max = "3G",
 		stdout = "../logs/mark_duplicates/{sample}.out",
 		stderr = "../logs/mark_duplicates/{sample}.err"
-	resources:
-		mem = "32gb" #cluster
+	#resources:
+	#	mem = "32gb" #cluster -- again, doesn't seem to be necessary
 	conda:
 		"envs/picard.yaml"
 	shell:
 		"picard MarkDuplicates "
-		"-Djava.io.tmpdir=$TMPDIR -Xms{params.memory_min} -Xmx{params.memory_max} "
+		"-Djava.io.tmpdir=$TMPDIR -Xmx{params.memory_max} "
 		"{params.inputs} "
 		"--OUTPUT {output.bam} "
 		"--METRICS_FILE {output.metrics} "
@@ -139,11 +143,12 @@ rule base_recalibration:
 	output:
 		"../output/recal_tables/{sample}_recal.table"
 	params:
-		memory = "24G", #jvm
+		#memory = "24G", #jvm -- doesn't seem to be necessary
+		memory = "3G",
 		stdout = "../logs/base_recalibration/{sample}.out",
 		stderr = "../logs/base_recalibration/{sample}.err"
-	resources:
-		mem = "32gb" #cluster
+	#resources:
+	#	mem = "32gb" #cluster
 	conda:
 		"envs/gatk.yaml"
 	shell:
@@ -165,11 +170,12 @@ rule apply_BQSR:
 		bam = "../output/bams/{sample}.bam",
 		bai = "../output/bams/{sample}.bai"
 	params:
-		memory = "24G", #jvm
+		#memory = "24G", #jvm
+		memory = "3G",
 		stdout = "../logs/apply_BQSR/{sample}.out",
 		stderr = "../logs/apply_BQSR/{sample}.err"
 	resources:
-		mem = "32gb", #cluster
+		#mem = "32gb", #cluster
 		mail = "ae" # send an email when finished as this is the last step
 	conda:
 		"envs/gatk.yaml"
@@ -194,11 +200,12 @@ rule haplotype_caller:
 	output:
 		"../scratch/{sample}/gvcfs/{sample}_{group}.g.vcf.gz"
 	params:
-		memory = "6G",
+		#memory = "6G",
+		memory = "3G",
 		stdout = "../logs/haplotype_caller/{sample}_{group}.out",
 		stderr = "../logs/haplotype_caller/{sample}_{group}.err"
-	resources:
-		mem = "12gb"
+	#resources:
+	#	mem = "12gb"
 	conda:
 		"envs/gatk.yaml"
 	shell:
@@ -226,7 +233,8 @@ rule merge_gvcfs:
 		"../output/gvcfs/{sample}.g.vcf.gz"
 	params:
 		inputs = lambda wildcards, input: "--INPUT " + " --INPUT ".join(input),
-		memory = "12G",
+		#memory = "12G",
+		memory = "3G",
 		stdout = "../logs/merge_gvcfs/{sample}.out",
 		stderr = "../logs/merge_gvcfs/{sample}.err"
 	resources:
