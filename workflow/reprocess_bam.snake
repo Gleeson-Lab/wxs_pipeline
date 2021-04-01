@@ -308,7 +308,7 @@ rule genotype_gvcfs:
 		interval_file = "../resources/intervals/intervalfile_{group}.list",
 		known = reference_data["dbsnp"]
 	output:
-		vcf = "../scratch/vcfs/{group}.vcf"
+		vcf = temp("../scratch/vcfs/{group}.vcf")
 	params:
 		java_opts = get_java_temp_directory,
 		extra = genotype_gvcfs_options
@@ -317,6 +317,28 @@ rule genotype_gvcfs:
 	priority: 5
 	wrapper: "0.73.0/bio/gatk/genotypegvcfs"
 
+rule merge_vcfs_for_vqsr:
+	"""
+	Merge the VCFs created so as to create the VQSR model on all of the data.
+	https://gatk.broadinstitute.org/hc/en-us/articles/360037594511-VariantRecalibrator
+	https://broadinstitute.github.io/picard/command-line-overview.html#MergeVcfs
+	"""
+	input:
+		# sorting ensures we merge in the proper order, not random
+		vcfs = expand("../scratch/vcfs/{group}.vcf",
+				group=sorted(
+					[int(value) for value in glob_wildcards(
+						"../resources/intervals/intervalfile_{group,\d+}.list").group]))
+	output:
+		temp("../scratch/vcfs/merged.vcf.gz")
+	params:
+		java_opts = get_java_temp_directory
+	resources:
+		mem_mb = 3000,
+		mail = "ae"
+	log: "../logs/merge_vcfs/merged_for_vqsr.log"
+	wrapper: "0.73.0/bio/picard/mergevcfs"
+
 rule snp_recalibration:
 	"""
 	Build a model for reassigning SNV quality scores.
@@ -324,27 +346,25 @@ rule snp_recalibration:
 	https://gatk.broadinstitute.org/hc/en-us/articles/360037594511-VariantRecalibrator
 	"""
 	input:
-		vcf = "../scratch/vcfs/{group}.vcf",
+		vcf = "../scratch/vcfs/merged.vcf.gz",
 		ref = reference_data["genome"],
-		interval_file = "../resources/intervals/intervalfile_{group}.list",
 		hapmap = reference_data["hapmap"],
 		omni = reference_data["omni"],
 		onekg = reference_data["onekg"],
 		dbsnp = reference_data["dbsnp"]
 	output:
-		vcf = temp("../scratch/recal/{group}_snps.recal"),
-		tranches = temp("../scratch/recal/{group}_snps.tranches")
+		vcf = temp("../scratch/recal/snps.recal"),
+		tranches = temp("../scratch/recal/snps.tranches")
 	params:
 		mode = "SNP",
 		java_opts = get_java_temp_directory,
-		extra = "-AS --max-gaussians 2",
+		extra = "-AS",
 		resources = {"hapmap":	{"known":False, "training":True, "truth":True, "prior":15.0},
 			     "omni":	{"known":False, "training":True, "truth":False, "prior":12.0},
 			     "onekg":	{"known":False, "training":True, "truth":False, "prior":10.0},
 			     "dbsnp":	{"known":True, "training":False, "truth":False, "prior":2.0}},
 		annotation = ["QD", "MQ", "MQRankSum", "ReadPosRankSum", "SOR", "DP"]
-	log: "../logs/snp_recalibration/{group}.log"
-	group: "genotype"
+	log: "../logs/snp_recalibration/log"
 	priority: 4
 	wrapper: "0.73.0/bio/gatk/variantrecalibrator"
 
@@ -356,8 +376,8 @@ rule apply_snp_recalibration:
 	"""
 	input:
 		vcf = "../scratch/vcfs/{group}.vcf",
-		recal = "../scratch/recal/{group}_snps.recal",
-		tranches = "../scratch/recal/{group}_snps.tranches",
+		recal = "../scratch/recal/snps.recal",
+		tranches = "../scratch/recal/snps.tranches",
 		ref = reference_data["genome"]
 	output:
 		vcf = temp("../scratch/vcfs/{group}_recal_snp.vcf")
@@ -366,7 +386,7 @@ rule apply_snp_recalibration:
 		mode = "SNP",
 		extra = "-AS"
 	log: "../logs/apply_snp_recalibration/{group}.log"
-	group: "genotype"
+	group: "apply_vqsr"
 	priority: 3
 	wrapper: "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/applyvqsr/bio/gatk/applyvqsr"
 
@@ -377,25 +397,23 @@ rule indel_recalibration:
 	https://gatk.broadinstitute.org/hc/en-us/articles/360037594511-VariantRecalibrator
 	"""
 	input:
-		vcf = "../scratch/vcfs/{group}_recal_snp.vcf",
+		vcf = "../scratch/vcfs/merged.vcf.gz",
 		ref = reference_data["genome"],
-		interval_file = "../resources/intervals/intervalfile_{group}.list",
 		mills = reference_data["indel_mills"],
 		axiom = reference_data["axiom"],
 		dbsnp = reference_data["dbsnp"],
 	output:
-		vcf = temp("../scratch/recal/{group}_indels.recal"),
-		tranches = temp("../scratch/recal/{group}_indels.tranches")
+		vcf = temp("../scratch/recal/indels.recal"),
+		tranches = temp("../scratch/recal/indels.tranches")
 	params:
 		mode = "INDEL",
 		java_opts = get_java_temp_directory,
-		extra = "-AS --max-gaussians 2",
+		extra = "-AS --max-gaussians 4",
 		resources = {"mills":	{"known":False, "training":True, "truth":True, "prior":12.0},
 			     "axiom":	{"known":False, "training":True, "truth":False, "prior":10.0},
 			     "dbsnp":	{"known":True, "training":False, "truth":False, "prior":2.0}},
 		annotation = ["QD", "MQRankSum", "ReadPosRankSum", "SOR", "DP", "FS"]
-	log: "../logs/indel_recalibration/{group}.log"
-	group: "genotype"
+	log: "../logs/indel_recalibration/log"
 	priority: 2
 	wrapper: "0.73.0/bio/gatk/variantrecalibrator"
 
@@ -407,8 +425,8 @@ rule apply_indel_recalibration:
 	"""
 	input:
 		vcf = "../scratch/vcfs/{group}_recal_snp.vcf",
-		recal = "../scratch/recal/{group}_indels.recal",
-		tranches = "../scratch/recal/{group}_indels.tranches",
+		recal = "../scratch/recal/indels.recal",
+		tranches = "../scratch/recal/indels.tranches",
 		ref = reference_data["genome"],
 	output:
 		vcf = temp("../scratch/vcfs/{group}.recal.vcf")
@@ -417,7 +435,7 @@ rule apply_indel_recalibration:
 		mode = "INDEL",
 		extra = "-AS"
 	log: "../logs/apply_indel_recalibration/{group}.log"
-	group: "genotype"
+	group: "apply_vqsr"
 	priority: 1
 	wrapper: "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/applyvqsr/bio/gatk/applyvqsr"
 
