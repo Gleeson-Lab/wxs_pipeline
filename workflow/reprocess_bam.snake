@@ -317,9 +317,11 @@ rule genotype_gvcfs:
 	priority: 5
 	wrapper: "0.73.0/bio/gatk/genotypegvcfs"
 
-rule merge_vcfs_for_vqsr:
+rule merge_vcfs:
 	"""
 	Merge the VCFs created so as to create the VQSR model on all of the data.
+	Previously we applied VQSR to the separate intervals independently,
+		but this appears to be an unnecessary optimization.
 	https://gatk.broadinstitute.org/hc/en-us/articles/360037594511-VariantRecalibrator
 	https://broadinstitute.github.io/picard/command-line-overview.html#MergeVcfs
 	"""
@@ -375,17 +377,17 @@ rule apply_snp_recalibration:
 	https://gatk.broadinstitute.org/hc/en-us/articles/360037226332-ApplyVQSR
 	"""
 	input:
-		vcf = "../scratch/vcfs/{group}.vcf",
+		vcf = "../scratch/vcfs/merged.vcf.gz",
 		recal = "../scratch/recal/snps.recal",
 		tranches = "../scratch/recal/snps.tranches",
 		ref = reference_data["genome"]
 	output:
-		vcf = temp("../scratch/vcfs/{group}_recal_snp.vcf")
+		vcf = temp("../scratch/vcfs/recal_snp.vcf")
 	params:
 		java_opts = get_java_temp_directory,
 		mode = "SNP",
 		extra = "-AS"
-	log: "../logs/apply_snp_recalibration/{group}.log"
+	log: "../logs/apply_snp_recalibration/log"
 	group: "apply_vqsr"
 	priority: 3
 	wrapper: "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/applyvqsr/bio/gatk/applyvqsr"
@@ -424,38 +426,17 @@ rule apply_indel_recalibration:
 	https://gatk.broadinstitute.org/hc/en-us/articles/360037226332-ApplyVQSR
 	"""
 	input:
-		vcf = "../scratch/vcfs/{group}_recal_snp.vcf",
+		vcf = "../scratch/vcfs/recal_snp.vcf",
 		recal = "../scratch/recal/indels.recal",
 		tranches = "../scratch/recal/indels.tranches",
 		ref = reference_data["genome"],
 	output:
-		vcf = temp("../scratch/vcfs/{group}.recal.vcf")
+		vcf = "../output/joint_vcf/final.vcf.gz"
 	params:
 		java_opts = get_java_temp_directory,
 		mode = "INDEL",
 		extra = "-AS"
-	log: "../logs/apply_indel_recalibration/{group}.log"
+	log: "../logs/apply_indel_recalibration/log"
 	group: "apply_vqsr"
 	priority: 1
 	wrapper: "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/applyvqsr/bio/gatk/applyvqsr"
-
-rule merge_vcfs:
-	"""
-	Merge all of the joint-called VCFs into the final genome-wide VCF.
-	https://broadinstitute.github.io/picard/command-line-overview.html#MergeVcfs
-	"""
-	input:
-		# sorting ensures we merge in the proper order, not random
-		vcfs = expand("../scratch/vcfs/{group}.recal.vcf",
-				group=sorted(
-					[int(value) for value in glob_wildcards(
-						"../resources/intervals/intervalfile_{group,\d+}.list").group]))
-	output:
-		"../output/joint_vcf/final.vcf.gz"
-	params:
-		java_opts = get_java_temp_directory
-	resources:
-		mem_mb = 3000,
-		mail = "ae"
-	log: "../logs/merge_vcfs/final.log"
-	wrapper: "0.73.0/bio/picard/mergevcfs"
