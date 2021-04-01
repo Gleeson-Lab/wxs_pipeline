@@ -353,8 +353,8 @@ rule snp_recalibration:
 		onekg = reference_data["onekg"],
 		dbsnp = reference_data["dbsnp"]
 	output:
-		vcf = temp("../scratch/recal/{group}_snps.recal"),
-		tranches = temp("../scratch/recal/{group}_snps.tranches")
+		vcf = temp("../scratch/recal/snps.recal"),
+		tranches = temp("../scratch/recal/snps.tranches")
 	params:
 		mode = "SNP",
 		java_opts = get_java_temp_directory,
@@ -364,7 +364,7 @@ rule snp_recalibration:
 			     "onekg":	{"known":False, "training":True, "truth":False, "prior":10.0},
 			     "dbsnp":	{"known":True, "training":False, "truth":False, "prior":2.0}},
 		annotation = ["QD", "MQ", "MQRankSum", "ReadPosRankSum", "SOR", "DP"]
-	log: "../logs/snp_recalibration/{group}.log"
+	log: "../logs/snp_recalibration/log"
 	priority: 4
 	wrapper: "0.73.0/bio/gatk/variantrecalibrator"
 
@@ -376,8 +376,8 @@ rule apply_snp_recalibration:
 	"""
 	input:
 		vcf = "../scratch/vcfs/{group}.vcf",
-		recal = "../scratch/recal/{group}_snps.recal",
-		tranches = "../scratch/recal/{group}_snps.tranches",
+		recal = "../scratch/recal/snps.recal",
+		tranches = "../scratch/recal/snps.tranches",
 		ref = reference_data["genome"]
 	output:
 		vcf = temp("../scratch/vcfs/{group}_recal_snp.vcf")
@@ -403,8 +403,8 @@ rule indel_recalibration:
 		axiom = reference_data["axiom"],
 		dbsnp = reference_data["dbsnp"],
 	output:
-		vcf = temp("../scratch/recal/{group}_indels.recal"),
-		tranches = temp("../scratch/recal/{group}_indels.tranches")
+		vcf = temp("../scratch/recal/indels.recal"),
+		tranches = temp("../scratch/recal/indels.tranches")
 	params:
 		mode = "INDEL",
 		java_opts = get_java_temp_directory,
@@ -413,7 +413,7 @@ rule indel_recalibration:
 			     "axiom":	{"known":False, "training":True, "truth":False, "prior":10.0},
 			     "dbsnp":	{"known":True, "training":False, "truth":False, "prior":2.0}},
 		annotation = ["QD", "MQRankSum", "ReadPosRankSum", "SOR", "DP", "FS"]
-	log: "../logs/indel_recalibration/{group}.log"
+	log: "../logs/indel_recalibration/log"
 	priority: 2
 	wrapper: "0.73.0/bio/gatk/variantrecalibrator"
 
@@ -425,8 +425,8 @@ rule apply_indel_recalibration:
 	"""
 	input:
 		vcf = "../scratch/vcfs/{group}_recal_snp.vcf",
-		recal = "../scratch/recal/{group}_indels.recal",
-		tranches = "../scratch/recal/{group}_indels.tranches",
+		recal = "../scratch/recal/indels.recal",
+		tranches = "../scratch/recal/indels.tranches",
 		ref = reference_data["genome"],
 	output:
 		vcf = temp("../scratch/vcfs/{group}.recal.vcf")
