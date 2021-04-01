@@ -101,6 +101,7 @@ rule all:
 rule get_read_groups:
 	"""
 	Extract the set of read groups from a BAM's header.
+	The SM attribute is updated to {sample}, but others are unchanged.
 	"""
 	input:
 		"../input/bams/{sample}.bam"
@@ -110,7 +111,7 @@ rule get_read_groups:
 		"envs/samtools.yaml"
 	priority: 15
 	shell:
-		"samtools view -H {input} | grep '^@RG' > {output}"
+		"samtools view -H {input} | grep '^@RG' | sed 's/SM:\S*/SM:{wildcards.sample}/' > {output}"
 
 checkpoint rule split_bam:
 	"""
