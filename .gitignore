@@ -8,3 +8,4 @@ scratch
 temp
 resources
 workflow/.snakemake
+*.log
