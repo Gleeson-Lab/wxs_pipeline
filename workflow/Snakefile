@@ -1,443 +1,625 @@
 configfile: "../config/config.yaml"
-localrules: all, get_read_groups
+
+
+localrules:
+    all,
+    get_read_groups,
+    #copy_resource_to_scratch,
+
+
 # update config based on secondary configuration file
 import os
 from yaml import safe_load
 from functools import lru_cache
+
 with open("../config/project.yaml") as project_fh:
-	config.update(safe_load(project_fh))
+    config.update(safe_load(project_fh))
 
 reference_data = config["reference"][config["genome_build"]]
 
+
 wildcard_constraints:
-	sample="\d{8,10}(?:_ds)?", # samples are exclusively labeled as 10-digit integers so far
-	rg="\d+", # samtools labels as integers starting from 0
-	group="\d+" # the genome interval subsets to restrict variant calling to so as to achieve parallelization
+    sample="\d{8,10}(?:_ds)?",  # samples are exclusively labeled as 10-digit integers so far
+    rg="\d+",  # samtools labels as integers starting from 0
+    group="\d+",  # the genome interval subsets to restrict variant calling to so as to achieve parallelization
+
 
 @lru_cache
 def get_samples(samples_file="samples.list"):
-	"""
-	Returns a list of samples specified in the given file.
-	This is used to control which samples are joint genotyped together.
-	"""
-	with open(samples_file) as samples_fh:
-		return [sample.strip() for sample in samples_fh.read().splitlines()]
+    """
+    Returns a list of samples specified in the given file.
+    This is used to control which samples are joint genotyped together.
+    """
+    with open(samples_file) as samples_fh:
+        return [sample.strip() for sample in samples_fh.read().splitlines()]
 
-def bwa_options(wildcards, input):
-	"""
-	Return the extra options to pass to bwa.
-	-p # interleaved reads
-	-K 100000000 # suggested for reproducibility
-	-Y # soft-clipping of supplementary alignments
-	-R # read group
-	"""
-	rg_number = int(wildcards.rg)
-	rg = ""
-	with open(input.rgs) as rgs_fh:
-		for x, line in enumerate(rgs_fh):
-			if x == rg_number:
-				rg = line.strip().replace("\t", r"\t")
-				break
-	if not rg:
-		raise ValueError("Could not find matching read group {} "
-				"from {}.".format(rg_number, input.rgs))
-	return "-p -Y -K 100000000 -R '{}'".format(rg)
+
+def bwa_options_interleaved(wildcards, input):
+    """
+    Return the extra options to pass to bwa for an interleaved FASTQ (for reprocessing BAMs).
+    -p # interleaved reads
+    """
+    rg_number = int(wildcards.rg)
+    rg = ""
+    with open(input.rgs) as rgs_fh:
+        for x, line in enumerate(rgs_fh):
+            if x == rg_number:
+                rg = line.strip().replace("\t", r"\t")
+                break
+    if not rg:
+        raise ValueError(
+            "Could not find matching read group {} "
+            "from {}.".format(rg_number, input.rgs)
+        )
+    parameters = [f"-R '{rg}'"]
+    parameters.append("-p")  # interleaved reads
+    for parameter, value in config["bwa"].items():
+        parameters.append(f"-{parameter} {value}")
+    return " ".join(parameters)
+
+
+def bwa_options_paired_end(wildcards, input):
+    """
+    Return the extra options to pass to bwa for paired-end FASTQs.
+    """
+    rg_lines = []
+    with open(input.rg) as rg_fh:
+        for line in rg_fh:
+            line = line.strip()
+            if line:
+                rg_lines.append(line)
+    if len(rg_lines) != 1:
+        raise ValueError(
+            "Found {} lines in RG file {} (should be 1).".format(
+                len(rg_lines), input.rg
+            )
+        )
+    rg = rg_lines[0].replace("\t", r"\t")
+    parameters = [f"-R '{rg}'"]
+    for parameter, value in config["bwa"].items():
+        parameters.append(f"-{parameter} {value}")
+    return " ".join(parameters)
+
 
 def haplotype_caller_options(wildcards, input):
-	"""
-	Return the extra options to pass to gatk HaplotypeCaller.
-	"""
-	return ("-L {interval_file} "
-		"-G StandardAnnotation "
-		"-G AS_StandardAnnotation "
-		"-G StandardHCAnnotation".format(interval_file=input.interval_file))
+    """
+    Return the extra options to pass to gatk HaplotypeCaller.
+    """
+    return (
+        "-L {interval_file} "
+        "-G StandardAnnotation "
+        "-G AS_StandardAnnotation "
+        "-G StandardHCAnnotation".format(interval_file=input.interval_file)
+    )
+
 
 def genotype_gvcfs_options(wildcards, input):
-	"""
-	Return the extra options to pass to gatk GenotypeGVCFs.
-	"""
-	return ("-G StandardAnnotation "
-		"-G AS_StandardAnnotation "
-		"-G StandardHCAnnotation "
-		"--only-output-calls-starting-in-intervals")
+    """
+    Return the extra options to pass to gatk GenotypeGVCFs.
+    """
+    return (
+        "-G StandardAnnotation "
+        "-G AS_StandardAnnotation "
+        "-G StandardHCAnnotation "
+        "--only-output-calls-starting-in-intervals"
+    )
+
 
 def get_java_temp_directory(wildcards):
-	"""
-	Return the directory specified by $TMPDIR if present, empty string otherwise.
-	"""
-	tmp_dir = os.environ.get("TMPDIR", "")
-	if tmp_dir:
-		return "-Djava.io.tmpdir={}".format(tmp_dir)
-	else:
-		return ""
+    """
+    Return the directory specified by $TMPDIR if present, empty string otherwise.
+    """
+    tmp_dir = os.environ.get("TMPDIR", "")
+    if tmp_dir:
+        return "-Djava.io.tmpdir={}".format(tmp_dir)
+    else:
+        return ""
+
 
 def aggregate_read_groups(wildcards):
-	"""
-	Returns a list of all BAMs for the given sample, one per read group.
-	"""
-	# N.B. we already know what this directory is, i.e. ../scratch/{sample},
-	# but we must run checkpoints.split_bam.get() so that snakemake
-	# infers the rule calling this is dependent upon split_bam
-	split_bams_directory = os.path.dirname(
-			checkpoints.split_bam.get(**wildcards).output[0])
-	return expand("../scratch/{sample}/{sample}_reprocessed_{rg}.bam",
-			sample=wildcards.sample,
-			rg=glob_wildcards(
-				"{split_bams_directory}/{sample}_{{rg,\d+}}.bam".format(
-					split_bams_directory=split_bams_directory,
-					sample=wildcards.sample)).rg)
+    """
+    Returns a list of all BAMs for the given sample, one per read group.
+    """
+    # need to handle case of BAM/FASTQs separately
+    if os.path.isfile(f"../input/bams/{wildcards['sample']}"):
+        # N.B. we already know what this directory is, i.e. ../scratch/{sample},
+        # but we must run checkpoints.split_bam.get() so that snakemake
+        # infers the rule calling this is dependent upon split_bam
+        split_bams_directory = os.path.dirname(
+            checkpoints.split_bam.get(**wildcards).output[0]
+        )
+        return expand(
+            "../scratch/{sample}/{sample}_{rg}.bam",
+            sample=wildcards.sample,
+            rg=glob_wildcards(
+                "{split_bams_directory}/{sample}_{{rg,\d+}}.bam".format(
+                    split_bams_directory=split_bams_directory, sample=wildcards.sample
+                )
+            ).rg,
+        )
+    else:
+        # use as input the BAMs corresponding to each pair of FASTQs
+        return expand(
+            "../scratch/{sample}/{sample}_{rg}.bam",
+            sample=wildcards.sample,
+            rg=glob_wildcards(
+                "../input/fastqs/{sample}_{{rg,\d+}}.R1.fastq.gz".format(
+                    sample=wildcards.sample
+                )
+            ).rg,
+        )
+
 
 rule all:
-	"""
-	Dummy rule to get (for samples in samples.list):
-	1. joint-called VCF
-	2. single-sample GVCFs
-	3. QC information
-	"""
-	input:
-		"../output/joint_vcf/final.vcf.gz",
-		expand("../output/gvcfs/{sample}.g.vcf.gz", sample=get_samples())
+    """
+    Dummy rule to get (for samples in samples.list):
+    1. joint-called VCF
+    2. single-sample GVCFs
+    3. QC information
+    """
+    input:
+        "../output/joint_vcf/final.vcf.gz",
+        expand("../output/gvcfs/{sample}.g.vcf.gz", sample=get_samples()),
+
 
 rule get_read_groups:
-	"""
-	Extract the set of read groups from a BAM's header.
-	The SM attribute is updated to {sample}, but others are unchanged.
-	"""
-	input:
-		"../input/bams/{sample}.bam"
-	output:
-		"../scratch/{sample}/{sample}.rgs"
-	conda:
-		"envs/samtools.yaml"
-	priority: 15
-	shell:
-		"samtools view -H {input} | grep '^@RG' | sed 's/SM:\S*/SM:{wildcards.sample}/' > {output}"
+    """
+    Extract the set of read groups from a BAM's header.
+    The SM attribute is updated to {sample}, but others are unchanged.
+    """
+    input:
+        "../input/bams/{sample}.bam",
+    output:
+        "../scratch/{sample}/{sample}.rgs",
+    conda:
+        "envs/samtools.yaml"
+    priority: 15
+    shell:
+        "samtools view -H {input} | grep '^@RG' | sed 's/SM:\S*/SM:{wildcards.sample}/' > {output}"
 
-checkpoint rule split_bam:
-	"""
-	Split a BAM by read group.
-	http://www.htslib.org/doc/samtools-split.html
-	"""
-	input:
-		bam = "../input/bams/{sample}.bam",
-		rgs = "../scratch/{sample}/{sample}.rgs"
-	output:
-		touch("../scratch/{sample}/{sample}.split_bam.done")
-	conda:
-		"envs/samtools.yaml"
-	log: "../logs/split_bam/{sample}.log",
-	group: "bam_to_fastq"
-	priority: 14
-	shell:
-		"samtools split -f ../scratch/{wildcards.sample}/"
-		"{wildcards.sample}_%#.bam {input.bam} > {log} 2>&1"
+
+checkpoint split_bam:
+    """
+    Split a BAM by read group.
+    http://www.htslib.org/doc/samtools-split.html
+    """
+    input:
+        bam="../input/bams/{sample}.bam",
+        rgs="../scratch/{sample}/{sample}.rgs",
+    output:
+        touch("../scratch/{sample}/{sample}.split_bam.done"),
+    conda:
+        "envs/samtools.yaml"
+    log:
+        "../logs/split_bam/{sample}.log",
+    group:
+        "bam_to_fastq"
+    priority: 14
+    shell:
+        "samtools split -f ../scratch/{wildcards.sample}/"
+        "{wildcards.sample}_%#.bam {input.bam} > {log} 2>&1"
+
 
 rule extract_fastq_from_bam:
-	"""
-	Extract the reads from a BAM into an interleaved FASTQ.
-	http://www.htslib.org/doc/samtools-fasta.html
-	"""
-	input:
-		flag = "../scratch/{sample}/{sample}.split_bam.done",
-		bam = "../scratch/{sample}/{sample}_{rg}.bam"
-	output:
-		temp("../scratch/{sample}/{sample}_{rg}.fq")
-	conda:
-		"envs/samtools.yaml"
-	log: "../logs/extract_fastqs/{sample}_{rg}.log",
-	group: "bam_to_fastq"
-	priority: 13
-	shell:
-		"samtools fastq -0 /dev/null {input.bam} > {output} 2> {log}"
+    """
+    Extract the reads from a BAM into an interleaved FASTQ.
+    http://www.htslib.org/doc/samtools-fasta.html
+    """
+    input:
+        flag="../scratch/{sample}/{sample}.split_bam.done",
+        bam="../scratch/{sample}/{sample}_{rg}.bam",
+    output:
+        temp("../scratch/{sample}/{sample}_{rg}.fq"),
+    conda:
+        "envs/samtools.yaml"
+    log:
+        "../logs/extract_fastqs/{sample}_{rg}.log",
+    group:
+        "bam_to_fastq"
+    priority: 13
+    shell:
+        "samtools fastq -0 /dev/null {input.bam} > {output} 2> {log}"
 
-rule bwa_align_and_sort:
-	"""
-	Align a FASTQ of interleaved reads.
-	http://bio-bwa.sourceforge.net/bwa.shtml
-	"""
-	input:
-		reads = "../scratch/{sample}/{sample}_{rg}.fq",
-		rgs = "../scratch/{sample}/{sample}.rgs"
-	output:
-		temp("../scratch/{sample}/{sample}_reprocessed_{rg}.bam")
-	threads: 8
-	params:
-		extra = bwa_options,
-		sort = "samtools",
-		index = reference_data["genome"]
-	resources:
-		walltime = "16:00:00",
-		#queue = "hotel" # longer run-time
-	log: "../logs/bwa/{sample}_{rg}.log"
-	priority: 12
-	wrapper: "0.73.0/bio/bwa/mem"
+
+rule bwa_align_and_sort_interleaved:
+    """
+    Align a FASTQ of interleaved reads.
+    http://bio-bwa.sourceforge.net/bwa.shtml
+    """
+    input:
+        reads="../scratch/{sample}/{sample}_{rg}.fq",
+        rgs="../scratch/{sample}/{sample}.rgs",
+    output:
+        temp("../scratch/{sample}/{sample}_{rg}.bam"),
+    threads: 8
+    params:
+        extra=bwa_options_interleaved,
+        sorting="samtools",
+        index=reference_data["genome"],
+    resources:
+        walltime="16:00:00",
+        queue="hotel",
+    log:
+        "../logs/bwa/{sample}_{rg}.log",
+    priority: 12
+    wrapper:
+        "0.77.0/bio/bwa/mem"
+
+
+rule bwa_align_and_sort_paired_end:
+    """
+    Align a pair of FASTQs.
+    This is the starting point of processing when beginning with FASTQs as opposed to a BAM file.
+    http://bio-bwa.sourceforge.net/bwa.shtml
+    """
+    input:
+        reads=[
+            "../input/fastqs/{sample}_{rg}.R1.fastq.gz",
+            "../input/fastqs/{sample}_{rg}.R2.fastq.gz",
+        ],
+        # this is one line that will be passed to bwa, for example,
+        # @RG\tID:C4HFE.4\tDT:2014-06-25T00:00:00-0400\tPU:C4HFEACXX140625.4.TCGGAATG-TATGGTTC\TLB:Pond-350482\tPI:0\tSM:4142420025\tCN:BI\tPL:illumina
+        rg="../input/fastqs/{sample}_{rg}.txt",
+    output:
+        temp("../scratch/{sample}/{sample}_{rg}.bam"),
+    threads: 8
+    params:
+        extra=bwa_options_paired_end,
+        sorting="samtools",
+        index=reference_data["genome"],
+    resources:
+        walltime="16:00:00",
+        queue="hotel",
+    log:
+        "../logs/bwa/{sample}_{rg}.log",
+    priority: 12
+    wrapper:
+        "0.77.0/bio/bwa/mem"
+
 
 rule mark_duplicates:
-	"""
-	Mark PCR duplicates and merge separate read group BAMs.
-	Note that we have preserved read group information for downstream processing.
-		(https://gatk.broadinstitute.org/hc/en-us/articles/360035889471-How-should-I-pre-process-data-from-multiplexed-sequencing-and-multi-library-designs-)
+    """
+    Mark PCR duplicates and merge separate read group BAMs.
+    Note that we have preserved read group information for downstream processing.
+        (https://gatk.broadinstitute.org/hc/en-us/articles/360035889471-How-should-I-pre-process-data-from-multiplexed-sequencing-and-multi-library-designs-)
         https://gatk.broadinstitute.org/hc/en-us/articles/360037052812-MarkDuplicates-Picard-
-	"""
-	input:
-		aggregate_read_groups
-	output:
-		bam = temp("../scratch/{sample}/{sample}_markdup.bam"),
-		metrics = "../output/qc/{sample}_metrics.txt"
-	params:
-		java_opts = get_java_temp_directory
-	resources:
-		mem_mb = 3000
-	log: "../logs/mark_duplicates/{sample}.log"
-	priority: 11
-	wrapper: "master/bio/picard/markduplicates"
+    """
+    input:
+        aggregate_read_groups,
+    output:
+        bam=temp("../scratch/{sample}/{sample}_markdup.bam"),
+        metrics="../output/qc/{sample}_metrics.txt",
+    params:
+        java_opts=get_java_temp_directory,
+    resources:
+        mem_mb=3000,
+    log:
+        "../logs/mark_duplicates/{sample}.log",
+    priority: 11
+    wrapper:
+        "master/bio/picard/markduplicates"
+
 
 rule base_recalibrator:
-	"""
-	Generate a model for read base quality score recalibration.
-	https://gatk.broadinstitute.org/hc/en-us/articles/360037593511-BaseRecalibrator
-	"""
-	input:
-		bam = "../scratch/{sample}/{sample}_markdup.bam",
-		ref = reference_data["genome"],
-		known = [reference_data["dbsnp"], reference_data["indel_mills"],
-			 reference_data["indel_known"]]
-	output:
-		recal_table = "../output/recal_tables/{sample}_recal.table"
-	params:
-		java_opts = get_java_temp_directory
-	resources:
-		mem_mb = 3000
-	log: "../logs/base_recalibration/{sample}.log"
-	group: "base_recalibration"
-	priority: 10
-	wrapper: "0.73.0/bio/gatk/baserecalibrator"
+    """
+    Generate a model for read base quality score recalibration.
+    https://gatk.broadinstitute.org/hc/en-us/articles/360037593511-BaseRecalibrator
+    """
+    input:
+        bam="../scratch/{sample}/{sample}_markdup.bam",
+	dict = reference_data["genome_dict"],
+        ref=reference_data["genome"],
+        known=[
+            reference_data["dbsnp"],
+            reference_data["indel_mills"],
+            reference_data["indel_known"],
+        ],
+    output:
+        recal_table="../output/recal_tables/{sample}_recal.table",
+    params:
+        java_opts=get_java_temp_directory,
+    resources:
+        mem_mb=3000,
+    log:
+        "../logs/base_recalibration/{sample}.log",
+    priority: 10
+    wrapper:
+        "0.77.0/bio/gatk/baserecalibrator"
+
 
 rule apply_BQSR:
-	"""
-	Apply the model for read base quality score recalibration.
-	https://gatk.broadinstitute.org/hc/en-us/articles/360037225212-ApplyBQSR
-	"""
-	input:
-		bam = "../scratch/{sample}/{sample}_markdup.bam",
-		recal_table = "../output/recal_tables/{sample}_recal.table",
-		ref = reference_data["genome"]
-	output:
-		bam = "../output/bams/{sample}.bam"
-	params:
-		java_opts = get_java_temp_directory
-	resources:
-		mem_mb = 3000
-	log: "../logs/apply_BQSR/{sample}.log"
-	group: "base_recalibration"
-	priority: 9
-	wrapper: "0.73.0/bio/gatk/applybqsr"
+    """
+    Apply the model for read base quality score recalibration.
+    https://gatk.broadinstitute.org/hc/en-us/articles/360037225212-ApplyBQSR
+    """
+    input:
+        bam="../scratch/{sample}/{sample}_markdup.bam",
+	dict = reference_data["genome_dict"],
+        recal_table="../output/recal_tables/{sample}_recal.table",
+        ref=reference_data["genome"],
+    output:
+        bam="../output/bams/{sample}.bam",
+    params:
+        java_opts=get_java_temp_directory,
+    resources:
+        mem_mb=3000,
+	walltime="16:00:00",
+    log:
+        "../logs/apply_BQSR/{sample}.log",
+    priority: 9
+    wrapper:
+        "0.77.0/bio/gatk/applybqsr"
+
 
 rule haplotype_caller:
-	"""
-	Discover and assign initial genotypes in the given interval.
-	https://gatk.broadinstitute.org/hc/en-us/articles/360037225632-HaplotypeCaller
-	"""
-	input:
-		bam = "../output/bams/{sample}.bam",
-		ref = reference_data["genome"],
-		interval_file = "../resources/intervals/intervalfile_{group}.list" # parallelization - currently 120x
-	output:
-		gvcf = "../scratch/{sample}/gvcfs/{sample}_{group}.g.vcf.gz"
-	params:
-		java_opts = get_java_temp_directory,
-		extra = haplotype_caller_options
-	resources:
-		mem_mb = 3000
-	log: "../logs/haplotype_caller/{sample}_{group}.log"
-	priority: 8
-	wrapper: "0.73.0/bio/gatk/haplotypecaller"
+    """
+    Discover and assign initial genotypes in the given interval.
+    https://gatk.broadinstitute.org/hc/en-us/articles/360037225632-HaplotypeCaller
+    """
+    input:
+        bam="../output/bams/{sample}.bam",
+        ref=reference_data["genome"],
+        interval_file="../resources/intervals/intervalfile_{group}.list",  # parallelization - currently 120x
+    output:
+        gvcf="../scratch/{sample}/gvcfs/{sample}_{group}.g.vcf.gz",
+    params:
+        java_opts=get_java_temp_directory,
+        extra=haplotype_caller_options,
+    resources:
+        mem_mb=3000,
+    log:
+        "../logs/haplotype_caller/{sample}_{group}.log",
+    priority: 8
+    wrapper:
+        "0.77.0/bio/gatk/haplotypecaller"
+
 
 rule merge_gvcfs:
-	"""
-	Combine all GVCFs for the sample.  This is primarily for archival purposes,
-	as for throughput reasons we run joint-genotyping jobs on intervals of the genome,
-	not the whole genome.
-	https://broadinstitute.github.io/picard/command-line-overview.html#MergeVcfs
-	"""
-	input:
-		# sorting ensures we merge in the proper order, not random
-		vcfs = expand("../scratch/{{sample}}/gvcfs/{{sample}}_{group}.g.vcf.gz",
-				group=sorted(
-					[int(value) for value in glob_wildcards(
-					"../resources/intervals/intervalfile_{group,\d+}.list").group]))
-	output:
-		"../output/gvcfs/{sample}.g.vcf.gz"
-	params:
-		java_opts = get_java_temp_directory
-	resources:
-		mem_mb = 3000,
-		mail = "ae"
-	log: "../logs/merge_gvcfs/{sample}.log"
-	priority: 7
-	wrapper: "0.73.0/bio/picard/mergevcfs"
+    """
+    Combine all GVCFs for the sample.  This is primarily for archival purposes,
+    as for throughput reasons we run joint-genotyping jobs on intervals of the genome,
+    not the whole genome.
+    https://broadinstitute.github.io/picard/command-line-overview.html#MergeVcfs
+    """
+    input:
+        # sorting ensures we merge in the proper order, not random
+        vcfs=expand(
+            "../scratch/{{sample}}/gvcfs/{{sample}}_{group}.g.vcf.gz",
+            group=sorted(
+                [
+                    int(value)
+                    for value in glob_wildcards(
+                        "../resources/intervals/intervalfile_{group,\d+}.list"
+                    ).group
+                ]
+            ),
+        ),
+    output:
+        "../output/gvcfs/{sample}.g.vcf.gz",
+    params:
+        java_opts=get_java_temp_directory,
+    resources:
+        mem_mb=3000,
+        mail="ae",
+    log:
+        "../logs/merge_gvcfs/{sample}.log",
+    priority: 7
+    wrapper:
+        "0.77.0/bio/picard/mergevcfs"
+
 
 rule genomics_db_import:
-	"""
-	Import into a GenomicsDB data store all GVCFs on the given interval for a set of samples.
-	N.B. Everything previously was performed on single samples; this is where
-	joint calling begins.
-	https://gatk.broadinstitute.org/hc/en-us/articles/360037592851-GenomicsDBImport
-	"""
-	input:
-		gvcfs = expand("../scratch/{sample}/gvcfs/{sample}_{{group}}.g.vcf.gz",
-				sample=get_samples())
-	output:
-		db = directory("../scratch/genomics_db_{group}")
-	params:
-		java_opts = get_java_temp_directory,
-		extra = "--tmp-dir $TMPDIR",
-		intervals = "../resources/intervals/intervalfile_{group}.list"
-	log: "../logs/genomics_db_import/{group}.log"
-	group: "genotype"
-	priority: 6
-	wrapper: "0.73.0/bio/gatk/genomicsdbimport"
+    """
+    Import into a GenomicsDB data store all GVCFs on the given interval for a set of samples.
+    N.B. Everything previously was performed on single samples; this is where
+    joint calling begins.
+    https://gatk.broadinstitute.org/hc/en-us/articles/360037592851-GenomicsDBImport
+    """
+    input:
+        gvcfs=expand(
+            "../scratch/{sample}/gvcfs/{sample}_{{group}}.g.vcf.gz",
+            sample=get_samples(),
+        ),
+    output:
+        db=directory("../scratch/genomics_db_{group}"),
+    params:
+        java_opts=get_java_temp_directory,
+        extra="--tmp-dir $TMPDIR",
+        intervals="../resources/intervals/intervalfile_{group}.list",
+    log:
+        "../logs/genomics_db_import/{group}.log",
+    group:
+        "genotype"
+    priority: 6
+    wrapper:
+        "0.77.0/bio/gatk/genomicsdbimport"
+
 
 rule genotype_gvcfs:
-	"""
-	Perform the actual joint calling on the created GenomicsDB data store.
-	https://gatk.broadinstitute.org/hc/en-us/articles/360037594731-GenotypeGVCFs
-	"""
-	input:
-		genomicsdb = "../scratch/genomics_db_{group}",
-		ref = reference_data["genome"],
-		interval_file = "../resources/intervals/intervalfile_{group}.list",
-		known = reference_data["dbsnp"]
-	output:
-		vcf = temp("../scratch/vcfs/{group}.vcf")
-	params:
-		java_opts = get_java_temp_directory,
-		extra = genotype_gvcfs_options
-	log: "../logs/genotype_gvcfs/{group}.log"
-	group: "genotype"
-	priority: 5
-	wrapper: "0.73.0/bio/gatk/genotypegvcfs"
+    """
+    Perform the actual joint calling on the created GenomicsDB data store.
+    https://gatk.broadinstitute.org/hc/en-us/articles/360037594731-GenotypeGVCFs
+    """
+    input:
+        genomicsdb="../scratch/genomics_db_{group}",
+        ref=reference_data["genome"],
+        interval_file="../resources/intervals/intervalfile_{group}.list",
+        known=reference_data["dbsnp"],
+    output:
+        vcf=temp("../scratch/vcfs/{group}.vcf"),
+    params:
+        java_opts=get_java_temp_directory,
+        extra=genotype_gvcfs_options,
+    log:
+        "../logs/genotype_gvcfs/{group}.log",
+    group:
+        "genotype"
+    priority: 5
+    wrapper:
+        "0.77.0/bio/gatk/genotypegvcfs"
+
 
 rule merge_vcfs:
-	"""
-	Merge the VCFs created so as to create the VQSR model on all of the data.
-	Previously we applied VQSR to the separate intervals independently,
-		but this appears to be an unnecessary optimization.
-	https://gatk.broadinstitute.org/hc/en-us/articles/360037594511-VariantRecalibrator
-	https://broadinstitute.github.io/picard/command-line-overview.html#MergeVcfs
-	"""
-	input:
-		# sorting ensures we merge in the proper order, not random
-		vcfs = expand("../scratch/vcfs/{group}.vcf",
-				group=sorted(
-					[int(value) for value in glob_wildcards(
-						"../resources/intervals/intervalfile_{group,\d+}.list").group]))
-	output:
-		temp("../scratch/vcfs/merged.vcf.gz")
-	params:
-		java_opts = get_java_temp_directory
-	resources:
-		mem_mb = 3000,
-		mail = "ae"
-	log: "../logs/merge_vcfs/merged_for_vqsr.log"
-	wrapper: "0.73.0/bio/picard/mergevcfs"
+    """
+    Merge the VCFs created so as to create the VQSR model on all of the data.
+    Previously we applied VQSR to the separate intervals independently,
+        but this appears to be an unnecessary optimization.
+    https://gatk.broadinstitute.org/hc/en-us/articles/360037594511-VariantRecalibrator
+    https://broadinstitute.github.io/picard/command-line-overview.html#MergeVcfs
+    """
+    input:
+        # sorting ensures we merge in the proper order, not random
+        vcfs=expand(
+            "../scratch/vcfs/{group}.vcf",
+            group=sorted(
+                [
+                    int(value)
+                    for value in glob_wildcards(
+                        "../resources/intervals/intervalfile_{group,\d+}.list"
+                    ).group
+                ]
+            ),
+        ),
+    output:
+        temp("../scratch/vcfs/merged.vcf.gz"),
+    params:
+        java_opts=get_java_temp_directory,
+    resources:
+        mem_mb=3000,
+        mail="ae",
+    log:
+        "../logs/merge_vcfs/merged_for_vqsr.log",
+    wrapper:
+        "0.77.0/bio/picard/mergevcfs"
+
 
 rule snp_recalibration:
-	"""
-	Build a model for reassigning SNV quality scores.
-	https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels-
-	https://gatk.broadinstitute.org/hc/en-us/articles/360037594511-VariantRecalibrator
-	"""
-	input:
-		vcf = "../scratch/vcfs/merged.vcf.gz",
-		ref = reference_data["genome"],
-		hapmap = reference_data["hapmap"],
-		omni = reference_data["omni"],
-		onekg = reference_data["onekg"],
-		dbsnp = reference_data["dbsnp"]
-	output:
-		vcf = temp("../scratch/recal/snps.recal"),
-		tranches = temp("../scratch/recal/snps.tranches")
-	params:
-		mode = "SNP",
-		java_opts = get_java_temp_directory,
-		extra = "-AS",
-		resources = {"hapmap":	{"known":False, "training":True, "truth":True, "prior":15.0},
-			     "omni":	{"known":False, "training":True, "truth":False, "prior":12.0},
-			     "onekg":	{"known":False, "training":True, "truth":False, "prior":10.0},
-			     "dbsnp":	{"known":True, "training":False, "truth":False, "prior":2.0}},
-		annotation = ["QD", "MQ", "MQRankSum", "ReadPosRankSum", "SOR", "DP"]
-	log: "../logs/snp_recalibration/log"
-	priority: 4
-	wrapper: "0.73.0/bio/gatk/variantrecalibrator"
+    """
+    Build a model for reassigning SNV quality scores.
+    https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels-
+    https://gatk.broadinstitute.org/hc/en-us/articles/360037594511-VariantRecalibrator
+    """
+    input:
+        vcf="../scratch/vcfs/merged.vcf.gz",
+        ref=reference_data["genome"],
+        hapmap=reference_data["hapmap"],
+        omni=reference_data["omni"],
+        onekg=reference_data["onekg"],
+        dbsnp=reference_data["dbsnp"],
+    output:
+        vcf=temp("../scratch/recal/snps.recal"),
+        tranches=temp("../scratch/recal/snps.tranches"),
+    params:
+        mode="SNP",
+        java_opts=get_java_temp_directory,
+        extra="-AS",
+        resources={
+            "hapmap": {"known": False, "training": True, "truth": True, "prior": 15.0},
+            "omni": {"known": False, "training": True, "truth": False, "prior": 12.0},
+            "onekg": {"known": False, "training": True, "truth": False, "prior": 10.0},
+            "dbsnp": {"known": True, "training": False, "truth": False, "prior": 2.0},
+        },
+        annotation=["QD", "MQ", "MQRankSum", "ReadPosRankSum", "SOR", "DP"],
+    log:
+        "../logs/snp_recalibration/log",
+    priority: 4
+    wrapper:
+        "0.77.0/bio/gatk/variantrecalibrator"
+
 
 rule apply_snp_recalibration:
-	"""
-	Apply the model for reassigning SNV quality scores.
-	https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels-
-	https://gatk.broadinstitute.org/hc/en-us/articles/360037226332-ApplyVQSR
-	"""
-	input:
-		vcf = "../scratch/vcfs/merged.vcf.gz",
-		recal = "../scratch/recal/snps.recal",
-		tranches = "../scratch/recal/snps.tranches",
-		ref = reference_data["genome"]
-	output:
-		vcf = temp("../scratch/vcfs/recal_snp.vcf")
-	params:
-		java_opts = get_java_temp_directory,
-		mode = "SNP",
-		extra = "-AS"
-	log: "../logs/apply_snp_recalibration/log"
-	group: "apply_vqsr"
-	priority: 3
-	wrapper: "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/applyvqsr/bio/gatk/applyvqsr"
+    """
+    Apply the model for reassigning SNV quality scores.
+    https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels-
+    https://gatk.broadinstitute.org/hc/en-us/articles/360037226332-ApplyVQSR
+    """
+    input:
+        vcf="../scratch/vcfs/merged.vcf.gz",
+        recal="../scratch/recal/snps.recal",
+        tranches="../scratch/recal/snps.tranches",
+        ref=reference_data["genome"],
+    output:
+        vcf=temp("../scratch/vcfs/recal_snp.vcf"),
+    params:
+        java_opts=get_java_temp_directory,
+        mode="SNP",
+        extra="-AS",
+    log:
+        "../logs/apply_snp_recalibration/log",
+    group:
+        "apply_vqsr"
+    priority: 3
+    wrapper:
+        "0.77.0/bio/gatk/applyvqsr"
+
 
 rule indel_recalibration:
-	"""
-	Build a model for reassigning indel quality scores.
-	https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels-
-	https://gatk.broadinstitute.org/hc/en-us/articles/360037594511-VariantRecalibrator
-	"""
-	input:
-		vcf = "../scratch/vcfs/merged.vcf.gz",
-		ref = reference_data["genome"],
-		mills = reference_data["indel_mills"],
-		axiom = reference_data["axiom"],
-		dbsnp = reference_data["dbsnp"],
-	output:
-		vcf = temp("../scratch/recal/indels.recal"),
-		tranches = temp("../scratch/recal/indels.tranches")
-	params:
-		mode = "INDEL",
-		java_opts = get_java_temp_directory,
-		extra = "-AS --max-gaussians 4",
-		resources = {"mills":	{"known":False, "training":True, "truth":True, "prior":12.0},
-			     "axiom":	{"known":False, "training":True, "truth":False, "prior":10.0},
-			     "dbsnp":	{"known":True, "training":False, "truth":False, "prior":2.0}},
-		annotation = ["QD", "MQRankSum", "ReadPosRankSum", "SOR", "DP", "FS"]
-	log: "../logs/indel_recalibration/log"
-	priority: 2
-	wrapper: "0.73.0/bio/gatk/variantrecalibrator"
+    """
+    Build a model for reassigning indel quality scores.
+    https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels-
+    https://gatk.broadinstitute.org/hc/en-us/articles/360037594511-VariantRecalibrator
+    """
+    input:
+        vcf="../scratch/vcfs/merged.vcf.gz",
+        ref=reference_data["genome"],
+        mills=reference_data["indel_mills"],
+        axiom=reference_data["axiom"],
+        dbsnp=reference_data["dbsnp"],
+    output:
+        vcf=temp("../scratch/recal/indels.recal"),
+        tranches=temp("../scratch/recal/indels.tranches"),
+    params:
+        mode="INDEL",
+        java_opts=get_java_temp_directory,
+        extra="-AS --max-gaussians 4",
+        resources={
+            "mills": {"known": False, "training": True, "truth": True, "prior": 12.0},
+            "axiom": {"known": False, "training": True, "truth": False, "prior": 10.0},
+            "dbsnp": {"known": True, "training": False, "truth": False, "prior": 2.0},
+        },
+        annotation=["QD", "MQRankSum", "ReadPosRankSum", "SOR", "DP", "FS"],
+    log:
+        "../logs/indel_recalibration/log",
+    priority: 2
+    wrapper:
+        "0.77.0/bio/gatk/variantrecalibrator"
+
 
 rule apply_indel_recalibration:
-	"""
-	Apply the model for reassigning indel quality scores.
-	https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels-
-	https://gatk.broadinstitute.org/hc/en-us/articles/360037226332-ApplyVQSR
-	"""
-	input:
-		vcf = "../scratch/vcfs/recal_snp.vcf",
-		recal = "../scratch/recal/indels.recal",
-		tranches = "../scratch/recal/indels.tranches",
-		ref = reference_data["genome"],
-	output:
-		vcf = "../output/joint_vcf/final.vcf.gz"
-	params:
-		java_opts = get_java_temp_directory,
-		mode = "INDEL",
-		extra = "-AS"
-	log: "../logs/apply_indel_recalibration/log"
-	group: "apply_vqsr"
-	priority: 1
-	wrapper: "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/applyvqsr/bio/gatk/applyvqsr"
+    """
+    Apply the model for reassigning indel quality scores.
+    https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels-
+    https://gatk.broadinstitute.org/hc/en-us/articles/360037226332-ApplyVQSR
+    """
+    input:
+        vcf="../scratch/vcfs/recal_snp.vcf",
+        recal="../scratch/recal/indels.recal",
+        tranches="../scratch/recal/indels.tranches",
+        ref=reference_data["genome"],
+    output:
+        vcf="../output/joint_vcf/final.vcf.gz",
+    params:
+        java_opts=get_java_temp_directory,
+        mode="INDEL",
+        extra="-AS",
+    log:
+        "../logs/apply_indel_recalibration/log",
+    group:
+        "apply_vqsr"
+    priority: 1
+    wrapper:
+        "0.77.0/bio/gatk/applyvqsr"
+
+
+rule copy_resource_to_scratch:
+    """
+    Copy a file from projects storage to scratch for use in the pipeline.
+    """
+    input:
+        f"/projects/ps-gleesonlab3/resources/{config['genome_build']}/{{resource}}",
+    output:
+        "../resources/{resource}",
+    resources:
+        queue="glean",
+    shell:
+        "rsync {input}* $(dirname {output})"
