@@ -1,8 +1,6 @@
 *.list
 *.txt
 *.bak
-input/bams/*
-input/fastqs/*
 logs
 output
 scratch
