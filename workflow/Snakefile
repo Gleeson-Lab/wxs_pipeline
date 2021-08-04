@@ -4,7 +4,6 @@ configfile: "../config/config.yaml"
 localrules:
     all,
     get_read_groups,
-    #copy_resource_to_scratch,
 
 
 # update config based on secondary configuration file
@@ -307,7 +306,7 @@ rule base_recalibrator:
     """
     input:
         bam="../scratch/{sample}/{sample}_markdup.bam",
-	dict = reference_data["genome_dict"],
+        dict=reference_data["genome_dict"],
         ref=reference_data["genome"],
         known=[
             reference_data["dbsnp"],
@@ -334,7 +333,7 @@ rule apply_BQSR:
     """
     input:
         bam="../scratch/{sample}/{sample}_markdup.bam",
-	dict = reference_data["genome_dict"],
+        dict=reference_data["genome_dict"],
         recal_table="../output/recal_tables/{sample}_recal.table",
         ref=reference_data["genome"],
     output:
@@ -343,7 +342,7 @@ rule apply_BQSR:
         java_opts=get_java_temp_directory,
     resources:
         mem_mb=3000,
-	walltime="16:00:00",
+        queue="hotel",
     log:
         "../logs/apply_BQSR/{sample}.log",
     priority: 9
@@ -401,6 +400,7 @@ rule merge_gvcfs:
     resources:
         mem_mb=3000,
         mail="ae",
+        queue="glean",
     log:
         "../logs/merge_gvcfs/{sample}.log",
     priority: 7

@@ -1,11 +1,11 @@
 *.list
 *.txt
 *.bak
-input
+input/bams/*
+input/fastqs/*
 logs
 output
 scratch
-temp
 resources
 workflow/.snakemake
 *.log
