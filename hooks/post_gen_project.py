@@ -15,4 +15,4 @@ for link, directory in (
 ):
     if not os.path.isdir(directory):
         os.makedirs(directory)
-        os.symlink(directory, f"../{link}")
+    os.symlink(directory, link)
