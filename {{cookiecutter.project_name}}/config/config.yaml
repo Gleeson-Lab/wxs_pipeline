@@ -1,4 +1,3 @@
-email: "brcopeland@ucsd.edu"
 #reference files - don't change unless you have a good reason to do so, change genome_build variable instead
 reference:
         hg38:
