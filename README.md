@@ -3,10 +3,12 @@ This pipeline takes arbitrary numbers of WGS samples in BAM and/or FASTQ format 
 
 Requirements:
 1. [Install conda](https://docs.conda.io/en/latest/miniconda.html).
-2. (Recommended): [Initialize snakemake cluster profile](https://github.com/brcopeland/pbs-torque).
-3. `git clone` this repository.
+2. [Install snakemake](https://snakemake.readthedocs.io/en/stable/getting_started/installation.html).
+3. [Install cookiecutter](https://cookiecutter.readthedocs.io/en/latest/installation.html#install-cookiecutter).
+4. (Recommended): [Initialize snakemake cluster profile](https://github.com/brcopeland/pbs-torque).
+5. Copy this repository with `cookiecutter gh:brcopeland/wgs_pipeline` or `cookiecutter git+ssh//git@github.com/brcopeland/wgs_pipeline.git`
 
-Now within the main directory, the pipeline requires the directories `logs`, `output`, and `scratch` to exist.  N.B. these should be symlinks to directories in your scratch space; for example, `mkdir /oasis/tscc/scratch/bcopeland/wgs/logs && ln -s /oasis/tscc/scratch/bcopeland/wgs/logs .` to create a `logs` directory (replace `bcopeland` with your user name), and then create a symlink to it from your current directory.  These should be symlinks because of storage and I/O limitations in your home directory.
+Now within the main directory, the pipeline requires the directories `logs`, `output`, and `scratch` to exist.  These will be created elsewhere and a symlink generated as these should not be in your home directory or `/projects` for I/O and storage reasons.  A default value is provided which you can adjust ($USER will be replaced by your user name).
 
 The pipeline will look to process every sample that it finds in `input/bams` and `input/fastqs`.  These directories already exist within the repository but each BAM/FASTQ should be a symlink (again for storage reasons) to where the file is actually located.  Currently for simplicity (for design, not usage), the pipeline expects each BAM to be named `{external_id}.bam` in the `input/bams` directory, where `{external_id}` is the 10 digit external ID the lab uses.  Likewise, the pipeline expects each FASTQ to be named `{external_id}_{rg}.R{read}.fastq.gz` in the `input/fastqs` directory, where `{rg}` is a non-negative integer, and `{read}` is `1` or `2` (i.e., read one or read two).  Individual samples must have either one BAM or multiple FASTQs; some samples may have a BAM while others have FASTQs (but do not provide a BAM + FASTQs for the sample sample).
 
