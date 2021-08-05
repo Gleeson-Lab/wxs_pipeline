@@ -5,5 +5,5 @@ logs
 output
 scratch
 resources
-workflow/.snakemake
+*.snakemake
 *.log
