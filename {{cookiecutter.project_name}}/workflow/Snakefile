@@ -512,7 +512,7 @@ rule snp_recalibration:
     params:
         mode="SNP",
         java_opts=get_java_temp_directory,
-        extra="-AS",
+        extra="-AS -tranche 100.0 -tranche 99.95 -tranche 99.9 -tranche 99.8 -tranche 99.6 -tranche 99.5 -tranche 99.4 -tranche 99.3 -tranche 99.0 -tranche 98.0 -tranche 97.0 -tranche 90.0",
         resources={
             "hapmap": {"known": False, "training": True, "truth": True, "prior": 15.0},
             "omni": {"known": False, "training": True, "truth": False, "prior": 12.0},
@@ -543,7 +543,7 @@ rule apply_snp_recalibration:
     params:
         java_opts=get_java_temp_directory,
         mode="SNP",
-        extra="-AS",
+        extra="-AS --truth-sensitivity-filter-level 99.7",
     log:
         "../logs/apply_snp_recalibration/log",
     group:
@@ -571,7 +571,7 @@ rule indel_recalibration:
     params:
         mode="INDEL",
         java_opts=get_java_temp_directory,
-        extra="-AS --max-gaussians 4",
+        extra="-AS --max-gaussians 4 -tranche 100.0 -tranche 99.95 -tranche 99.9 -tranche 99.5 -tranche 99.0 -tranche 97.0 -tranche 96.0 -tranche 95.0 -tranche 94.0 -tranche 93.5 -tranche 93.0 -tranche 92.0 -tranche 91.0 -tranche 90.0",
         resources={
             "mills": {"known": False, "training": True, "truth": True, "prior": 12.0},
             "axiom": {"known": False, "training": True, "truth": False, "prior": 10.0},
@@ -601,7 +601,7 @@ rule apply_indel_recalibration:
     params:
         java_opts=get_java_temp_directory,
         mode="INDEL",
-        extra="-AS",
+        extra="-AS -truth-sensitivity-filter-level 99.0",
     log:
         "../logs/apply_indel_recalibration/log",
     group:
