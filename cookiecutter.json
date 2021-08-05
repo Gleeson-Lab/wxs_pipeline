@@ -3,6 +3,6 @@
 	"logs": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/logs",
 	"output": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/output",
 	"resources": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/resources",
-	"scratch": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/resources",
+	"scratch": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/scratch",
 	"_copy_without_render": ["workflow/Snakefile"]
 }
