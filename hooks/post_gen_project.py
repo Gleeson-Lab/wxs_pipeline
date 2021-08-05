@@ -5,7 +5,7 @@ user = os.getlogin()
 logs = "{{cookiecutter.logs}}".replace("$USER", user)
 output = "{{cookiecutter.output}}".replace("$USER", user)
 resources = "{{cookiecutter.resources}}".replace("$USER", user)
-scratch = "{{cookiecutter.resources}}".replace("$USER", user)
+scratch = "{{cookiecutter.scratch}}".replace("$USER", user)
 
 for link, directory in (
     ("logs", logs),
