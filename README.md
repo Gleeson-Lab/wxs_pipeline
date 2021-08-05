@@ -6,7 +6,7 @@ Requirements:
 2. [Install snakemake](https://snakemake.readthedocs.io/en/stable/getting_started/installation.html).
 3. [Install cookiecutter](https://cookiecutter.readthedocs.io/en/latest/installation.html#install-cookiecutter).
 4. (Recommended): [Initialize snakemake cluster profile](https://github.com/brcopeland/pbs-torque).
-5. Copy this repository with `cookiecutter gh:brcopeland/wgs_pipeline` or `cookiecutter git+ssh//git@github.com/brcopeland/wgs_pipeline.git`
+5. Copy this repository with `cookiecutter gh:brcopeland/wgs_pipeline` or `cookiecutter git+ssh://git@github.com/brcopeland/wgs_pipeline.git`
 
 Now within the main directory, the pipeline requires the directories `logs`, `output`, and `scratch` to exist.  These will be created elsewhere and a symlink generated as these should not be in your home directory or `/projects` for I/O and storage reasons.  A default value is provided which you can adjust ($USER will be replaced by your user name).
 
