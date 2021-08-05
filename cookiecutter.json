@@ -4,5 +4,5 @@
 	"output": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/output",
 	"resources": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/resources",
 	"scratch": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/resources",
-	"_copy_without_render": ["{{cookiecutter.project_name}}/workflow/Snakefile"]
+	"_copy_without_render": ["workflow/Snakefile"]
 }
