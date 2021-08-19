@@ -243,6 +243,10 @@ rule bwa_align_and_sort_interleaved:
     input:
         reads="../scratch/{sample}/{sample}_{rg}.fq",
         rgs="../scratch/{sample}/{sample}.rgs",
+        # this is not actually used by the
+        # wrapper (must be specified as params.index) this is here to ensure the
+        # reference genome actually exists
+        genome=reference_data["genome"],
     output:
         temp("../scratch/{sample}/{sample}_{rg}.bam"),
     threads: 8
@@ -274,6 +278,10 @@ rule bwa_align_and_sort_paired_end:
         # this is one line that will be passed to bwa, for example,
         # @RG\tID:C4HFE.4\tDT:2014-06-25T00:00:00-0400\tPU:C4HFEACXX140625.4.TCGGAATG-TATGGTTC\TLB:Pond-350482\tPI:0\tSM:4142420025\tCN:BI\tPL:illumina
         rg="../input/fastqs/{sample}_{rg}.txt",
+        # this is not actually used by the
+        # wrapper (must be specified as params.index) this is here to ensure the
+        # reference genome actually exists
+        genome=reference_data["genome"],
     output:
         temp("../scratch/{sample}/{sample}_{rg}.bam"),
     threads: 8
