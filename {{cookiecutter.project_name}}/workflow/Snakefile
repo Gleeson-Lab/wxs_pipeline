@@ -17,9 +17,7 @@ with open("../config/project.yaml") as project_fh:
     config.update(safe_load(project_fh))
 
 reference_data = config["reference"][config["genome_build"]]
-sample_regex = (
-    "\d{8,10}"  # samples are exclusively labeled as 8 to 10-digit integers so far
-)
+sample_regex = "[a-zA-Z\d_-]+" # sample identifiers must match this
 
 
 wildcard_constraints:
@@ -504,6 +502,7 @@ rule merge_vcfs:
     resources:
         mem_mb=3000,
         mail="ae",
+        queue="glean",
     log:
         "../logs/merge_vcfs/merged_for_vqsr.log",
     wrapper:
