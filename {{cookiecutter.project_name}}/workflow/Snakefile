@@ -6,13 +6,14 @@ localrules:
     get_read_groups,
 
 
-# update config based on secondary configuration file
 import os
 import re
 from yaml import safe_load
 from functools import lru_cache
 from glob import glob
+from utilities import get_options
 
+# update config based on secondary configuration file
 with open("../config/project.yaml") as project_fh:
     config.update(safe_load(project_fh))
 
@@ -65,11 +66,7 @@ def bwa_options_interleaved(wildcards, input):
             "Could not find matching read group {} "
             "from {}.".format(rg_number, input.rgs)
         )
-    parameters = [f"-R '{rg}'"]
-    parameters.append("-p")  # interleaved reads
-    for parameter, value in config["bwa"].items():
-        parameters.append(f"-{parameter} {value}")
-    return " ".join(parameters)
+    return get_options("bwa", prefix="-", extra=[("R", rg), ("p", "")])
 
 
 def bwa_options_paired_end(wildcards, input):
@@ -89,34 +86,15 @@ def bwa_options_paired_end(wildcards, input):
             )
         )
     rg = rg_lines[0].replace("\t", r"\t")
-    parameters = [f"-R '{rg}'"]
-    for parameter, value in config["bwa"].items():
-        parameters.append(f"-{parameter} {value}")
-    return " ".join(parameters)
+    return get_options("bwa", prefix="-", extra=[("R", rg)])
 
 
 def haplotype_caller_options(wildcards, input):
     """
     Return the extra options to pass to gatk HaplotypeCaller.
     """
-    return (
-        "-L {interval_file} "
-        "-G StandardAnnotation "
-        "-G AS_StandardAnnotation "
-        "-G StandardHCAnnotation".format(interval_file=input.interval_file)
-    )
+    return get_options("haplotype_caller", extra=[("intervals", input.interval_file)])
 
-
-def genotype_gvcfs_options(wildcards, input):
-    """
-    Return the extra options to pass to gatk GenotypeGVCFs.
-    """
-    return (
-        "-G StandardAnnotation "
-        "-G AS_StandardAnnotation "
-        "-G StandardHCAnnotation "
-        "--only-output-calls-starting-in-intervals"
-    )
 
 
 def get_java_temp_directory(wildcards):
@@ -472,7 +450,7 @@ rule genotype_gvcfs:
         vcf=temp("../scratch/vcfs/{group}.vcf"),
     params:
         java_opts=get_java_temp_directory,
-        extra=genotype_gvcfs_options,
+        extra=get_options("genotype_gvcfs"),
     log:
         "../logs/genotype_gvcfs/{group}.log",
     group:
@@ -536,7 +514,7 @@ rule snp_recalibration:
     params:
         mode="SNP",
         java_opts=get_java_temp_directory,
-        extra="-AS -tranche 100.0 -tranche 99.95 -tranche 99.9 -tranche 99.8 -tranche 99.6 -tranche 99.5 -tranche 99.4 -tranche 99.3 -tranche 99.0 -tranche 98.0 -tranche 97.0 -tranche 90.0",
+        extra=get_options("snp_recalibration")
         resources={
             "hapmap": {"known": False, "training": True, "truth": True, "prior": 15.0},
             "omni": {"known": False, "training": True, "truth": False, "prior": 12.0},
@@ -567,7 +545,7 @@ rule apply_snp_recalibration:
     params:
         java_opts=get_java_temp_directory,
         mode="SNP",
-        extra="-AS --truth-sensitivity-filter-level 99.7",
+        extra=get_options("apply_snp_recalibration"),
     log:
         "../logs/apply_snp_recalibration/log",
     group:
@@ -595,7 +573,7 @@ rule indel_recalibration:
     params:
         mode="INDEL",
         java_opts=get_java_temp_directory,
-        extra="-AS --max-gaussians 4 -tranche 100.0 -tranche 99.95 -tranche 99.9 -tranche 99.5 -tranche 99.0 -tranche 97.0 -tranche 96.0 -tranche 95.0 -tranche 94.0 -tranche 93.5 -tranche 93.0 -tranche 92.0 -tranche 91.0 -tranche 90.0",
+        extra=get_options("indel_recalibration"),
         resources={
             "mills": {"known": False, "training": True, "truth": True, "prior": 12.0},
             "axiom": {"known": False, "training": True, "truth": False, "prior": 10.0},
@@ -625,7 +603,7 @@ rule apply_indel_recalibration:
     params:
         java_opts=get_java_temp_directory,
         mode="INDEL",
-        extra="-AS -truth-sensitivity-filter-level 99.0",
+        extra=get_options("apply_indel_recalibration"),
     log:
         "../logs/apply_indel_recalibration/log",
     group:
