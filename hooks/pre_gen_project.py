@@ -7,7 +7,7 @@ if " " in project_name:
 
 genome_build = "{{cookiecutter.genome_build.lower()}}"
 import yaml
-with open("../{{cookiecutter.project_name}}/config/config.yaml") as c:
+with open("config/config.yaml") as c:
     config = yaml.load(c, yaml.Loader)
 if genome_build not in config["reference"]:
     print(f"genome_build ({genome_build}) not found in config.yaml.  "
