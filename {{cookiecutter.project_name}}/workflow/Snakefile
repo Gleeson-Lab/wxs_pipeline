@@ -25,12 +25,13 @@ wildcard_constraints:
     sample=sample_regex,
     rg="\d+",  # samtools labels as integers starting from 0
     group="\d+",  # the genome interval subsets to restrict variant calling to so as to achieve parallelization
+    alignment_format="(b|cr)am", # match bam or cram
 
 
 @lru_cache
 def get_samples():
     """
-    Returns a list of samples in ../input/bams and ../input/fastqs.
+    Returns a list of samples in ../input/bams, ../input/crams, and ../input/fastqs.
     This is used to control which samples are joint genotyped together.
     """
     samples = set()
@@ -38,6 +39,12 @@ def get_samples():
     for bam in glob("../input/bams/*.bam"):
         bam = os.path.basename(bam)
         m = bam_regex.match(bam)
+        if m:
+            samples.add(m.groupdict()["sample"])
+    cram_regex = re.compile(f"(?P<sample>{sample_regex})\.cram")
+    for cram in glob("../input/crams/*.cram"):
+        cram = os.path.basename(cram)
+        m = cram_regex.match(cram)
         if m:
             samples.add(m.groupdict()["sample"])
     fastq_regex = re.compile(f"(?P<sample>{sample_regex})_0\.R1\.fastq\.gz")
@@ -112,7 +119,8 @@ def aggregate_read_groups(wildcards):
     Returns a list of all BAMs for the given sample, one per read group.
     """
     # need to handle case of BAM/FASTQs separately
-    if os.path.isfile(f"../input/bams/{wildcards['sample']}"):
+    if (os.path.isfile(f"../input/bams/{wildcards['sample']}.bam")
+            or os.path.isfile(f"../input/crams/{wildcards['sample']}.cram")):
         # N.B. we already know what this directory is, i.e. ../scratch/{sample},
         # but we must run checkpoints.split_bam.get() so that snakemake
         # infers the rule calling this is dependent upon split_bam
@@ -155,11 +163,11 @@ rule all:
 
 rule get_read_groups:
     """
-    Extract the set of read groups from a BAM's header.
+    Extract the set of read groups from a BAM's (or CRAM's) header.
     The SM attribute is updated to {sample}, but others are unchanged.
     """
     input:
-        "../input/bams/{sample}.bam",
+        "../input/{alignment_format}s/{sample}.{alignment_format}",
     output:
         "../scratch/{sample}/{sample}.rgs",
     conda:
@@ -171,11 +179,11 @@ rule get_read_groups:
 
 checkpoint split_bam:
     """
-    Split a BAM by read group.
+    Split a BAM (or CRAM) by read group.
     http://www.htslib.org/doc/samtools-split.html
     """
     input:
-        bam="../input/bams/{sample}.bam",
+        bam="../input/{alignment_format}s/{sample}.{alignment_format}",
         rgs="../scratch/{sample}/{sample}.rgs",
     output:
         touch("../scratch/{sample}/{sample}.split_bam.done"),
