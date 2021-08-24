@@ -144,7 +144,7 @@ def aggregate_read_groups(wildcards):
 
 rule all:
     """
-    Dummy rule to get (for samples in samples.list):
+    Dummy rule to get:
     1. joint-called VCF
     2. single-sample GVCFs
     3. QC information

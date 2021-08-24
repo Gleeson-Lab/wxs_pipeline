@@ -1,1 +1,1 @@
-genome_build: "hg38"
+genome_build: "{{cookiecutter.genome_build.lower()}}"
