@@ -1,6 +1,7 @@
 {
 	"project_name": "wgs_pipeline",
 	"genome_build": ["hg38", "grch37"],
+	"sequencing_type": ["genome", "exome"],
 	"logs": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/logs",
 	"output": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/output",
 	"resources": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/resources",

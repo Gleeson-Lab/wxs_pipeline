@@ -18,7 +18,7 @@ with open("../config/project.yaml") as project_fh:
     config.update(safe_load(project_fh))
 
 reference_data = config["reference"][config["genome_build"]]
-sample_regex = "[a-zA-Z\d_-]+" # sample identifiers must match this
+sample_regex = "[a-zA-Z\d_-]+"  # sample identifiers must match this
 
 
 wildcard_constraints:
@@ -94,7 +94,6 @@ def haplotype_caller_options(wildcards, input):
     Return the extra options to pass to gatk HaplotypeCaller.
     """
     return get_options("haplotype_caller", extra=[("intervals", input.interval_file)])
-
 
 
 def get_java_temp_directory(wildcards):
@@ -514,7 +513,7 @@ rule snp_recalibration:
     params:
         mode="SNP",
         java_opts=get_java_temp_directory,
-        extra=get_options("snp_recalibration", ignore=["resources", "annotation"])
+        extra=get_options("snp_recalibration", ignore=["resources", "annotation"]),
         resources=config["snp_recalibration"]["resources"],
         annotation=config["snp_recalibration"]["annotation"],
     log:

@@ -37,7 +37,7 @@ snp_recalibration:
     omni: {known: False, training: True, truth: False, prior: 12.0}
     onekg: {known: False, training: True, truth: False, prior: 10.0}
     dbsnp: {known: True, training: False, truth: False, prior: 2.0}
-  annotation: [QD, MQ, MQRankSum, ReadPosRankSum, SOR, DP]
+  annotation: [QD, MQ, MQRankSum, ReadPosRankSum, FS, SOR, InbreedingCoeff$((DP))]
 apply_snp_recalibration:
   use-allele-specific-annotations: ""
   truth-sensitivity-filter-level: 99.7
@@ -49,7 +49,7 @@ indel_recalibration:
     mills: {known: False, training: True, truth: True, prior: 12.0}
     axiom: {known: False, training: True, truth: False, prior: 10.0}
     dbsnp: {known: True, training: False, truth: False, prior: 2.0}
-  annotation: [QD, MQRankSum, ReadPosRankSum, SOR, DP, FS]
+  annotation: [QD, FS, SOR, ReadPosRankSum, MQRankSum, InbreedingCoeff$((DP))]
 apply_indel_recalibration:
   use-allele-specific-annotations: ""
   truth-sensitivity-filter-level: 99.0
