@@ -25,6 +25,7 @@ Here is an example of the commands necessary to set up the input links for sampl
 I assigned (arbitrarily) read group `0` to the first pair of FASTQs, and read group `1` to the second pair of FASTQs.
 
 Now actually running the pipeline should be fairly simple.  If you have set up the `pbs-torque` cluster profile, all that is necessary is to run the command `snakemake --profile pbs-torque --use-conda` from within the `workflow` directory.  Log files will be saved to the `logs` directory and output files to the `output` directory.  You will need to archive these files to long-term storage after successfully running the pipeline.
+
 ---
 
 # Notes:
