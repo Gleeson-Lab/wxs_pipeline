@@ -12,6 +12,8 @@ def get_options(rule_name, prefix="--", separator=" ", extra=[],
     """
     parameters = []
     for parameter, values in chain(config[rule_name].items(), extra):
+        if parameter in ignore:
+            continue
         if type(values) is not list:
             values = [values]
         for value in values:
