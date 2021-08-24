@@ -9,7 +9,7 @@ localrules:
 import os
 import re
 from yaml import safe_load
-from functools import lru_cache
+from functools import lru_cache, partial
 from glob import glob
 from utilities import get_options
 
@@ -19,6 +19,7 @@ with open("../config/project.yaml") as project_fh:
 
 reference_data = config["reference"][config["genome_build"]]
 sample_regex = "[a-zA-Z\d_-]+"  # sample identifiers must match this
+get_options = partial(get_options, config=config)
 
 
 wildcard_constraints:

@@ -1,10 +1,11 @@
 from itertools import chain
 
-def get_options(rule_name, prefix="--", separator=" ", extra=[],
+def get_options(rule_name, config, prefix="--", separator=" ", extra=[],
                 ignore=set()):
     """
     Return extra parameters for the specified rule defined in the config file.
     :param rule_name: used to look in the appropriate section of the config file
+    :param config: the config dictionary
     :param prefix: the string to prepend to parameters
     :param separator: the string to separate the parameter from its value
     :param extra: an iterable of (parameter, value) entries to additionally include
