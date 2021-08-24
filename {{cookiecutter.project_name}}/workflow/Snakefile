@@ -514,14 +514,9 @@ rule snp_recalibration:
     params:
         mode="SNP",
         java_opts=get_java_temp_directory,
-        extra=get_options("snp_recalibration")
-        resources={
-            "hapmap": {"known": False, "training": True, "truth": True, "prior": 15.0},
-            "omni": {"known": False, "training": True, "truth": False, "prior": 12.0},
-            "onekg": {"known": False, "training": True, "truth": False, "prior": 10.0},
-            "dbsnp": {"known": True, "training": False, "truth": False, "prior": 2.0},
-        },
-        annotation=["QD", "MQ", "MQRankSum", "ReadPosRankSum", "SOR", "DP"],
+        extra=get_options("snp_recalibration", ignore=["resources", "annotation"])
+        resources=config["snp_recalibration"]["resources"],
+        annotation=config["snp_recalibration"]["annotation"],
     log:
         "../logs/snp_recalibration/log",
     priority: 4
@@ -573,13 +568,9 @@ rule indel_recalibration:
     params:
         mode="INDEL",
         java_opts=get_java_temp_directory,
-        extra=get_options("indel_recalibration"),
-        resources={
-            "mills": {"known": False, "training": True, "truth": True, "prior": 12.0},
-            "axiom": {"known": False, "training": True, "truth": False, "prior": 10.0},
-            "dbsnp": {"known": True, "training": False, "truth": False, "prior": 2.0},
-        },
-        annotation=["QD", "MQRankSum", "ReadPosRankSum", "SOR", "DP", "FS"],
+        extra=get_options("indel_recalibration", ignore=["resources", "annotation"]),
+        resources=config["indel_recalibration"]["resources"],
+        annotation=config["indel_recalibration"]["annotation"],
     log:
         "../logs/indel_recalibration/log",
     priority: 2

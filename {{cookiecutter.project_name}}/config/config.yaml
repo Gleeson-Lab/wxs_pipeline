@@ -32,6 +32,12 @@ genotype_gvcfs:
 snp_recalibration:
   use-allele-specific-annotations: ""
   truth-sensitivity-tranche: [100.0, 99.95, 99.9, 99.8, 99.6, 99.5, 99.4, 99.3, 99.0, 98.0, 97.0, 90.0]
+  resources:
+    hapmap: {known: False, training: True, truth: True, prior: 15.0}
+    omni: {known: False, training: True, truth: False, prior: 12.0}
+    onekg: {known: False, training: True, truth: False, prior: 10.0}
+    dbsnp: {known: True, training: False, truth: False, prior: 2.0}
+  annotation: [QD, MQ, MQRankSum, ReadPosRankSum, SOR, DP]
 apply_snp_recalibration:
   use-allele-specific-annotations: ""
   truth-sensitivity-filter-level: 99.7
@@ -39,6 +45,11 @@ indel_recalibration:
   use-allele-specific-annotations: ""
   max-gaussians: 4
   truth-sensitivity-tranche: [100.0, 99.95, 99.9, 99.5, 99.0, 97.0, 96.0, 95.0, 94.0, 93.5, 93.0, 92.0, 91.0, 90.0]
+  resources:
+    mills: {known: False, training: True, truth: True, prior: 12.0}
+    axiom: {known: False, training: True, truth: False, prior: 10.0}
+    dbsnp: {known: True, training: False, truth: False, prior: 2.0}
+  annotation: [QD, MQRankSum, ReadPosRankSum, SOR, DP, FS]
 apply_indel_recalibration:
   use-allele-specific-annotations: ""
   truth-sensitivity-filter-level: 99.0
