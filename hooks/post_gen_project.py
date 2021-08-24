@@ -1,3 +1,4 @@
+import sys
 import os
 import yaml
 
@@ -6,7 +7,7 @@ with open("config/config.yaml") as c:
     config = yaml.load(c, yaml.Loader)
 if genome_build not in config["reference"]:
     print(f"genome_build ({genome_build}) not found in config.yaml.  "
-          f"Valid options are {','.join(config['reference'].keys())}")
+          f"Valid options are: {','.join(config['reference'].keys())}.")
     sys.exit(1)
 
 user = os.getlogin()
