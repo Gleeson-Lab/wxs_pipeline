@@ -6,7 +6,8 @@ This pipeline takes arbitrary numbers of W[EG]S samples in BAM, CRAM, and/or FAS
 2. [Install snakemake](https://snakemake.readthedocs.io/en/stable/getting_started/installation.html).
 3. [Install cookiecutter](https://cookiecutter.readthedocs.io/en/latest/installation.html#install-cookiecutter).
 4. (Recommended): [Initialize snakemake cluster profile](https://github.com/brcopeland/pbs-torque).
-5. Copy this repository with `cookiecutter gh:brcopeland/wxs_pipeline` or `cookiecutter git+ssh://git@github.com/brcopeland/wxs_pipeline.git`
+5. [Configure github to use an SSH key](https://docs.github.com/en/github/authenticating-to-github/connecting-to-github-with-ssh/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent#generating-a-new-ssh-key-for-a-hardware-security-key).
+6. Copy this repository with `cookiecutter git+ssh://git@github.com/brcopeland/wxs_pipeline.git`
 ---
 
 # Configuration:
