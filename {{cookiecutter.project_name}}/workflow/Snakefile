@@ -615,4 +615,4 @@ rule copy_resource_to_scratch:
     resources:
         queue="glean",
     shell:
-        "rsync {input}* $(dirname {output})"
+        "rsync -L {input}* $(dirname {output})"
