@@ -67,7 +67,7 @@ def bwa_options_interleaved(wildcards, input):
             "Could not find matching read group {} "
             "from {}.".format(rg_number, input.rgs)
         )
-    return get_options("bwa", prefix="-", extra=[("R", rg), ("p", "")])
+    return get_options("bwa", prefix="-", extra=[("R", f"'{rg}'"), ("p", "")])
 
 
 def bwa_options_paired_end(wildcards, input):
@@ -87,7 +87,7 @@ def bwa_options_paired_end(wildcards, input):
             )
         )
     rg = rg_lines[0].replace("\t", r"\t")
-    return get_options("bwa", prefix="-", extra=[("R", rg)])
+    return get_options("bwa", prefix="-", extra=[("R", f"'{rg}'")])
 
 
 def haplotype_caller_options(wildcards, input):
