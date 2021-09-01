@@ -30,6 +30,10 @@ for link, directory in (
     ("resources", resources),
     ("scratch", scratch),
 ):
+    if os.path.isfile(link):
+        os.remove(link)
+    elif os.path.isdir(link):
+        os.rmdir(link)
     if not os.path.isdir(directory):
         os.makedirs(directory)
     os.symlink(directory, link)
