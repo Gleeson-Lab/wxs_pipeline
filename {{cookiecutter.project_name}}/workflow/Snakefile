@@ -121,10 +121,10 @@ def aggregate_read_groups(wildcards):
             checkpoints.split_bam.get(**wildcards).output[0]
         )
         return expand(
-            "../scratch/{sample}/{sample}_reprocessed_{rg}.bam",
+            "../scratch/{sample}/{sample}_{rg}.bam",
             sample=wildcards.sample,
             rg=glob_wildcards(
-                "{split_bams_directory}/{sample}_{{rg,\d+}}.bam".format(
+                "{split_bams_directory}/{sample}_original_{{rg,\d+}}.bam".format(
                     split_bams_directory=split_bams_directory, sample=wildcards.sample
                 )
             ).rg,
@@ -189,7 +189,7 @@ checkpoint split_bam:
     priority: 14
     shell:
         "samtools split -f ../scratch/{wildcards.sample}/"
-        "{wildcards.sample}_%#.bam {input.bam} > {log} 2>&1"
+        "{wildcards.sample}_original_%#.bam {input.bam} > {log} 2>&1"
 
 
 rule extract_fastq_from_bam:
@@ -199,7 +199,7 @@ rule extract_fastq_from_bam:
     """
     input:
         flag="../scratch/{sample}/{sample}.split_bam.done",
-        bam="../scratch/{sample}/{sample}_{rg}.bam",
+        bam="../scratch/{sample}/{sample}_original_{rg}.bam",
     output:
         temp("../scratch/{sample}/{sample}_{rg}.fq"),
     conda:
@@ -226,7 +226,7 @@ rule bwa_align_and_sort_interleaved:
         # reference genome actually exists
         genome=reference_data["genome"],
     output:
-        temp("../scratch/{sample}/{sample}_reprocessed_{rg}.bam"),
+        temp("../scratch/{sample}/{sample}_{rg}.bam"),
     threads: 8
     params:
         extra=bwa_options_interleaved,
@@ -261,7 +261,7 @@ rule bwa_align_and_sort_paired_end:
         # reference genome actually exists
         genome=reference_data["genome"],
     output:
-        temp("../scratch/{sample}/{sample}_reprocessed_{rg}.bam"),
+        temp("../scratch/{sample}/{sample}_{rg}.bam"),
     threads: 8
     params:
         extra=bwa_options_paired_end,
