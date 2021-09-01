@@ -121,7 +121,7 @@ def aggregate_read_groups(wildcards):
             checkpoints.split_bam.get(**wildcards).output[0]
         )
         return expand(
-            "../scratch/{sample}/{sample}_{rg}.bam",
+            "../scratch/{sample}/{sample}_reprocessed_{rg}.bam",
             sample=wildcards.sample,
             rg=glob_wildcards(
                 "{split_bams_directory}/{sample}_{{rg,\d+}}.bam".format(
@@ -226,7 +226,7 @@ rule bwa_align_and_sort_interleaved:
         # reference genome actually exists
         genome=reference_data["genome"],
     output:
-        temp("../scratch/{sample}/{sample}_{rg}.bam"),
+        temp("../scratch/{sample}/{sample}_reprocessed_{rg}.bam"),
     threads: 8
     params:
         extra=bwa_options_interleaved,
@@ -261,7 +261,7 @@ rule bwa_align_and_sort_paired_end:
         # reference genome actually exists
         genome=reference_data["genome"],
     output:
-        temp("../scratch/{sample}/{sample}_{rg}.bam"),
+        temp("../scratch/{sample}/{sample}_reprocessed_{rg}.bam"),
     threads: 8
     params:
         extra=bwa_options_paired_end,
