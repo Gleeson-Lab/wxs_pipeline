@@ -233,8 +233,7 @@ rule bwa_align_and_sort_interleaved:
         sorting="samtools",
         index=reference_data["genome"],
     resources:
-        walltime="16:00:00",
-        queue="hotel",
+        walltime=16,
     log:
         "../logs/bwa/{sample}_{rg}.log",
     priority: 12
@@ -268,8 +267,7 @@ rule bwa_align_and_sort_paired_end:
         sorting="samtools",
         index=reference_data["genome"],
     resources:
-        walltime="16:00:00",
-        queue="hotel",
+        walltime=16,
     log:
         "../logs/bwa/{sample}_{rg}.log",
     priority: 12
@@ -343,7 +341,6 @@ rule apply_BQSR:
         java_opts=get_java_temp_directory,
     resources:
         mem_mb=3000,
-        queue="hotel",
     log:
         "../logs/apply_BQSR/{sample}.log",
     priority: 9
@@ -401,7 +398,7 @@ rule merge_gvcfs:
     resources:
         mem_mb=3000,
         mail="ae",
-        queue="glean",
+        walltime=1,
     log:
         "../logs/merge_gvcfs/{sample}.log",
     priority: 7
@@ -488,7 +485,7 @@ rule merge_vcfs:
     resources:
         mem_mb=3000,
         mail="ae",
-        queue="glean",
+        walltime=1,
     log:
         "../logs/merge_vcfs/merged_for_vqsr.log",
     wrapper:
@@ -613,6 +610,6 @@ rule copy_resource_to_scratch:
     output:
         "../resources/{resource}",
     resources:
-        queue="glean",
+        walltime=1,
     shell:
         "rsync -L {input}* $(dirname {output})"
