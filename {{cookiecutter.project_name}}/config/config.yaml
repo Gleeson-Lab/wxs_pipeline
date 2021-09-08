@@ -53,3 +53,4 @@ indel_recalibration:
 apply_indel_recalibration:
   use-allele-specific-annotations: ""
   truth-sensitivity-filter-level: 99.0
+max_contamination: 0.01

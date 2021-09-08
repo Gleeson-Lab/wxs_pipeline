@@ -4,6 +4,8 @@ configfile: "../config/config.yaml"
 localrules:
     all,
     get_read_groups,
+    somalier_relate_read_groups,
+    check_contamination,
 
 
 import os
@@ -108,9 +110,45 @@ def get_java_temp_directory(wildcards):
         return ""
 
 
-def aggregate_read_groups(wildcards):
+def aggregate_read_groups_somalier(wildcards):
+    """
+    Returns a list of all data from "somalier extract" run on each read group
+    for a sample.
+    """
+    read_groups = aggregate_read_groups(wildcards)
+    return expand(
+        f"../scratch/{wildcards['sample']}/{wildcards['sample']}_{{rg}}.somalier",
+        rg=read_groups,
+    )
+
+
+def aggregate_read_groups_markduplicates(wildcards):
     """
     Returns a list of all BAMs for the given sample, one per read group.
+    """
+    read_groups = aggregate_read_groups(wildcards)
+    return expand(
+        f"../scratch/{wildcards['sample']}/{wildcards['sample']}_{{rg}}.bam",
+        rg=read_groups,
+    )
+
+
+def aggregate_read_groups_verifybamid(wildcards):
+    """
+    Returns a list of all .selfSM files for the given sample, one per read group.
+    """
+    read_groups = aggregate_read_groups(wildcards)
+    return expand(
+        f"../scratch/{wildcards['sample']}/{wildcards['sample']}_{{rg}}.selfSM",
+        rg=read_groups,
+    )
+
+
+def aggregate_read_groups(wildcards):
+    """
+    Returns a list of all read groups for the sample.
+    If this function is run as part of an input function for a rule and the
+    original file was a BAM, snakemake will infer it needs to run split_bam on it.
     """
     # need to handle case of BAM/FASTQs separately
     if os.path.isfile(f"../input/bams/{wildcards['sample']}.bam"):
@@ -120,26 +158,14 @@ def aggregate_read_groups(wildcards):
         split_bams_directory = os.path.dirname(
             checkpoints.split_bam.get(**wildcards).output[0]
         )
-        return expand(
-            "../scratch/{sample}/{sample}_{rg}.bam",
-            sample=wildcards.sample,
-            rg=glob_wildcards(
-                "{split_bams_directory}/{sample}_original_{{rg,\d+}}.bam".format(
-                    split_bams_directory=split_bams_directory, sample=wildcards.sample
-                )
-            ).rg,
-        )
+        return glob_wildcards(
+            f"{split_bams_directory}/{wildcards['sample']}_original_{{rg,\d+}}.bam"
+        ).rg
     else:
         # use as input the BAMs corresponding to each pair of FASTQs
-        return expand(
-            "../scratch/{sample}/{sample}_{rg}.bam",
-            sample=wildcards.sample,
-            rg=glob_wildcards(
-                "../input/fastqs/{sample}_{{rg,\d+}}.R1.fastq.gz".format(
-                    sample=wildcards.sample
-                )
-            ).rg,
-        )
+        return glob_wildcards(
+            f"../input/fastqs/{wildcards['sample']}_{{rg,\d+}}.R1.fastq.gz"
+        ).rg
 
 
 rule all:
@@ -165,7 +191,6 @@ rule get_read_groups:
         "../scratch/{sample}/{sample}.rgs",
     conda:
         "envs/samtools.yaml"
-    priority: 15
     shell:
         "samtools view -H {input} | grep '^@RG' | sed 's/SM:\S*/SM:{wildcards.sample}/' > {output}"
 
@@ -186,7 +211,6 @@ checkpoint split_bam:
         "../logs/split_bam/{sample}.log",
     group:
         "bam_to_fastq"
-    priority: 14
     shell:
         "samtools split -f ../scratch/{wildcards.sample}/"
         "{wildcards.sample}_original_%#.bam {input.bam} > {log} 2>&1"
@@ -208,7 +232,6 @@ rule extract_fastq_from_bam:
         "../logs/extract_fastqs/{sample}_{rg}.log",
     group:
         "bam_to_fastq"
-    priority: 13
     shell:
         "samtools fastq -0 /dev/null {input.bam} > {output} 2> {log}"
 
@@ -236,9 +259,8 @@ rule bwa_align_and_sort_interleaved:
         walltime=16,
     log:
         "../logs/bwa/{sample}_{rg}.log",
-    priority: 12
     wrapper:
-        "0.77.0/bio/bwa/mem"
+        "0.78.0/bio/bwa/mem"
 
 
 rule bwa_align_and_sort_paired_end:
@@ -270,9 +292,98 @@ rule bwa_align_and_sort_paired_end:
         walltime=16,
     log:
         "../logs/bwa/{sample}_{rg}.log",
-    priority: 12
     wrapper:
-        "0.77.0/bio/bwa/mem"
+        "0.78.0/bio/bwa/mem"
+
+
+rule index_read_group:
+    """
+    Create the index for the read group BAM (needed for somalier).
+    http://www.htslib.org/doc/samtools-index.html
+    """
+    input:
+        "../scratch/{sample}/{sample}_{rg}.bam",
+    output:
+        temp("../scratch/{sample}/{sample}_{rg}.bam.bai"),
+    resources:
+        queue="glean",
+    group:
+        "somalier_rg"
+    wrapper:
+        "0.78.0/bio/samtools/index"
+
+
+rule verifybamid_read_group:
+    """
+    Run verifybamid2 on the read group BAM to check for intraspecies
+    contamination prior to merging.
+    https://github.com/Griffan/VerifyBamID
+    """
+    input:
+        bam="../scratch/{sample}/{sample}_{rg}.bam",
+        bam_index="../scratch/{sample}/{sample}_{rg}.bam.bai",
+        ref=reference_data["genome"],
+    output:
+        selfsm="../scratch/{sample}/{sample}_{rg}.selfSM",
+        ancestry="../scratch/{sample}/{sample}_{rg}.ancestry",
+    log:
+        "../logs/verifybamid/{sample}_{rg}.log",
+    wrapper:
+        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/verifybamid2/bio/verifybamid/verifybamid2"
+
+
+rule check_contamination:
+    """
+    After running verifybamid2 on each read group BAM, check that the
+    contamination from another human is sufficiently low.
+    """
+    input:
+        aggregate_read_groups_verifybamid,
+    output:
+        touch("../scratch/{sample}/check_contamination.done"),
+    params:
+        max_contamination=config["max_contamination"],
+    script:
+        "scripts/check_contamination.py"
+
+
+rule somalier_extract_read_group:
+    """
+    Extract the information somalier needs to verify relatedness of all BAMs for
+    the individual prior to merging.
+    https://github.com/brentp/somalier
+    """
+    input:
+        somalier="../bin/somalier",
+        sites=f"../resources/sites.{config['genome_build']}.vcf.gz",
+        genome=reference_data["genome"],
+        bam="../scratch/{sample}/{sample}_{rg}.bam",
+        bam_index="../scratch/{sample}/{sample}_{rg}.bam.bai",
+    output:
+        temp("../scratch/{sample}/{sample}_{rg}.somalier"),
+    resources:
+        queue="glean",
+    group:
+        "somalier_rg"
+    shell:
+        "t=$(mktemp -d) && {input.somalier} extract -d $t --sites {input.sites} "
+        "-f {input.genome} --sample-prefix {wildcards.rg}_ {input.bam} && "
+        "mv $t/{wildcards.sample}.somalier {output} && rmdir $t "
+
+
+rule somalier_relate_read_groups:
+    """
+    Do pairwise kinship tests for all read group BAMs with somalier.
+    https://github.com/brentp/somalier
+    """
+    input:
+        aggregate_read_groups_somalier,
+    output:
+        "../output/qc/{sample}/somalier.pairs.tsv",
+    resources:
+        queue="glean",
+    shell:
+        "d=$(dirname {output} && cd $d && somalier relate {input}"
 
 
 rule mark_duplicates:
@@ -283,7 +394,7 @@ rule mark_duplicates:
         https://gatk.broadinstitute.org/hc/en-us/articles/360037052812-MarkDuplicates-Picard-
     """
     input:
-        aggregate_read_groups,
+        aggregate_read_groups_markduplicates,
     output:
         bam=temp("../scratch/{sample}/{sample}_markdup.bam"),
         metrics="../output/qc/{sample}_metrics.txt",
@@ -293,9 +404,8 @@ rule mark_duplicates:
         mem_mb=3000,
     log:
         "../logs/mark_duplicates/{sample}.log",
-    priority: 11
     wrapper:
-        "master/bio/picard/markduplicates"
+        "0.78.0/bio/picard/markduplicates"
 
 
 rule base_recalibrator:
@@ -320,9 +430,8 @@ rule base_recalibrator:
         mem_mb=3000,
     log:
         "../logs/base_recalibration/{sample}.log",
-    priority: 10
     wrapper:
-        "0.77.0/bio/gatk/baserecalibrator"
+        "0.78.0/bio/gatk/baserecalibrator"
 
 
 rule apply_BQSR:
@@ -343,9 +452,8 @@ rule apply_BQSR:
         mem_mb=3000,
     log:
         "../logs/apply_BQSR/{sample}.log",
-    priority: 9
     wrapper:
-        "0.77.0/bio/gatk/applybqsr"
+        "0.78.0/bio/gatk/applybqsr"
 
 
 rule haplotype_caller:
@@ -366,9 +474,8 @@ rule haplotype_caller:
         mem_mb=3000,
     log:
         "../logs/haplotype_caller/{sample}_{group}.log",
-    priority: 8
     wrapper:
-        "0.77.0/bio/gatk/haplotypecaller"
+        "0.78.0/bio/gatk/haplotypecaller"
 
 
 rule merge_gvcfs:
@@ -401,9 +508,8 @@ rule merge_gvcfs:
         walltime=1,
     log:
         "../logs/merge_gvcfs/{sample}.log",
-    priority: 7
     wrapper:
-        "0.77.0/bio/picard/mergevcfs"
+        "0.78.0/bio/picard/mergevcfs"
 
 
 rule genomics_db_import:
@@ -428,9 +534,8 @@ rule genomics_db_import:
         "../logs/genomics_db_import/{group}.log",
     group:
         "genotype"
-    priority: 6
     wrapper:
-        "0.77.0/bio/gatk/genomicsdbimport"
+        "0.78.0/bio/gatk/genomicsdbimport"
 
 
 rule genotype_gvcfs:
@@ -452,9 +557,8 @@ rule genotype_gvcfs:
         "../logs/genotype_gvcfs/{group}.log",
     group:
         "genotype"
-    priority: 5
     wrapper:
-        "0.77.0/bio/gatk/genotypegvcfs"
+        "0.78.0/bio/gatk/genotypegvcfs"
 
 
 rule merge_vcfs:
@@ -489,7 +593,7 @@ rule merge_vcfs:
     log:
         "../logs/merge_vcfs/merged_for_vqsr.log",
     wrapper:
-        "0.77.0/bio/picard/mergevcfs"
+        "0.78.0/bio/picard/mergevcfs"
 
 
 rule snp_recalibration:
@@ -516,9 +620,8 @@ rule snp_recalibration:
         annotation=config["snp_recalibration"]["annotation"],
     log:
         "../logs/snp_recalibration/log",
-    priority: 4
     wrapper:
-        "0.77.0/bio/gatk/variantrecalibrator"
+        "0.78.0/bio/gatk/variantrecalibrator"
 
 
 rule apply_snp_recalibration:
@@ -542,9 +645,8 @@ rule apply_snp_recalibration:
         "../logs/apply_snp_recalibration/log",
     group:
         "apply_vqsr"
-    priority: 3
     wrapper:
-        "0.77.0/bio/gatk/applyvqsr"
+        "0.78.0/bio/gatk/applyvqsr"
 
 
 rule indel_recalibration:
@@ -570,9 +672,8 @@ rule indel_recalibration:
         annotation=config["indel_recalibration"]["annotation"],
     log:
         "../logs/indel_recalibration/log",
-    priority: 2
     wrapper:
-        "0.77.0/bio/gatk/variantrecalibrator"
+        "0.78.0/bio/gatk/variantrecalibrator"
 
 
 rule apply_indel_recalibration:
@@ -596,9 +697,22 @@ rule apply_indel_recalibration:
         "../logs/apply_indel_recalibration/log",
     group:
         "apply_vqsr"
-    priority: 1
     wrapper:
-        "0.77.0/bio/gatk/applyvqsr"
+        "0.78.0/bio/gatk/applyvqsr"
+
+
+rule copy_program_to_scratch:
+    """
+    Copy a program from projects storage to scratch for use in the pipeline.
+    """
+    input:
+        "/projects/ps-gleesonlab3/resources/bin/{program}",
+    output:
+        "../bin/{program}",
+    resources:
+        queue="glean",
+    shell:
+        "rsync -L {input} $(dirname {output})"
 
 
 rule copy_resource_to_scratch:
