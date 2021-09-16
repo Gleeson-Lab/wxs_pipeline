@@ -1,7 +1,10 @@
 {
 	"project_name": "wgs_pipeline",
+	"email": "",
 	"genome_build": ["hg38", "grch37"],
 	"sequencing_type": ["genome", "exome"],
+	"max_intraspecies_contamination": "0.01",
+	"min_identity_relatedness": "0.99",
 	"logs": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/logs",
 	"output": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/output",
 	"resources": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/resources",

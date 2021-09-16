@@ -5,21 +5,23 @@ localrules:
     all,
     get_read_groups,
     somalier_relate_read_groups,
+    check_rgs_contamination,
     check_contamination,
+    check_read_group_relatedness,
+    copy_program_to_scratch,
+    somalier_relate_samples,
+    create_interval_files,
 
 
 import os
 import re
-from yaml import safe_load
 from functools import lru_cache, partial
 from glob import glob
 from utilities import get_options
 
-# update config based on secondary configuration file
-with open("../config/project.yaml") as project_fh:
-    config.update(safe_load(project_fh))
 
-reference_data = config["reference"][config["genome_build"]]
+genome_build = config["genome_build"]
+reference_data = config["reference"][genome_build]
 sample_regex = "[a-zA-Z\d_-]+"  # sample identifiers must match this
 get_options = partial(get_options, config=config)
 
@@ -38,18 +40,64 @@ def get_samples():
     """
     samples = set()
     bam_regex = re.compile(f"(?P<sample>{sample_regex})\.bam")
+    samples_not_matching_regex = []
     for bam in glob("../input/bams/*.bam"):
         bam = os.path.basename(bam)
         m = bam_regex.match(bam)
         if m:
             samples.add(m.groupdict()["sample"])
+        else:
+            samples_not_matching_regex.append(bam)
     fastq_regex = re.compile(f"(?P<sample>{sample_regex})_0\.R1\.fastq\.gz")
     for fastq in glob("../input/fastqs/*_0.R1.fastq.gz"):
         fastq = os.path.basename(fastq)
         m = fastq_regex.match(fastq)
         if m:
             samples.add(m.groupdict()["sample"])
-    return sorted(samples)
+        else:
+            samples_not_matching_regex.append(fastq)
+    if samples_not_matching_regex:
+        raise ValueError(
+            f"The following input files were found that do not "
+            f"match the expected format: {samples_not_matching_regex}."
+        )
+    if samples:
+        return sorted(samples)
+    else:
+        raise ValueError("Didn't find any samples in ../input.")
+
+
+rule all:
+    """
+    Dummy rule to get:
+    1. joint-called VCF
+    2. single-sample GVCFs
+    3. QC information
+    """
+    input:
+        "../output/qc/somalier/somalier.pairs.tsv",
+        expand("../output/gvcfs/{sample}.g.vcf.gz", sample=get_samples()),
+        expand(
+            "../output/qc/mosdepth/{sample}.mosdepth.summary.txt", sample=get_samples()
+        ),
+        expand(
+            "../output/qc/collectinsertsizemetrics/{sample}.txt", sample=get_samples()
+        ),
+
+
+def increment(wildcards, attempt, base, step):
+    """
+    Returns the walltime to run the given job for based on the number of
+    attempts.
+    """
+    return base + step * (attempt - 1)
+
+
+def get_output_directory(wildcards, output):
+    """
+    Return the output directory for the rule.
+    """
+    return os.path.dirname(output[0])
 
 
 def bwa_options_interleaved(wildcards, input):
@@ -66,8 +114,7 @@ def bwa_options_interleaved(wildcards, input):
                 break
     if not rg:
         raise ValueError(
-            "Could not find matching read group {} "
-            "from {}.".format(rg_number, input.rgs)
+            f"Could not find matching read group {rg_number} from {input.rgs}."
         )
     return get_options("bwa", prefix="-", extra=[("R", f"'{rg}'"), ("p", "")])
 
@@ -84,19 +131,10 @@ def bwa_options_paired_end(wildcards, input):
                 rg_lines.append(line)
     if len(rg_lines) != 1:
         raise ValueError(
-            "Found {} lines in RG file {} (should be 1).".format(
-                len(rg_lines), input.rg
-            )
+            f"Found {len(rg_lines)} lines in RG file {input.rg} (should be 1)."
         )
     rg = rg_lines[0].replace("\t", r"\t")
     return get_options("bwa", prefix="-", extra=[("R", f"'{rg}'")])
-
-
-def haplotype_caller_options(wildcards, input):
-    """
-    Return the extra options to pass to gatk HaplotypeCaller.
-    """
-    return get_options("haplotype_caller", extra=[("intervals", input.interval_file)])
 
 
 def get_java_temp_directory(wildcards):
@@ -105,79 +143,79 @@ def get_java_temp_directory(wildcards):
     """
     tmp_dir = os.environ.get("TMPDIR", "")
     if tmp_dir:
-        return "-Djava.io.tmpdir={}".format(tmp_dir)
+        return f"-Djava.io.tmpdir={tmp_dir}"
     else:
         return ""
-
-
-def aggregate_read_groups_somalier(wildcards):
-    """
-    Returns a list of all data from "somalier extract" run on each read group
-    for a sample.
-    """
-    read_groups = aggregate_read_groups(wildcards)
-    return expand(
-        f"../scratch/{wildcards['sample']}/{wildcards['sample']}_{{rg}}.somalier",
-        rg=read_groups,
-    )
 
 
 def aggregate_read_groups_markduplicates(wildcards):
     """
     Returns a list of all BAMs for the given sample, one per read group.
     """
-    read_groups = aggregate_read_groups(wildcards)
+    # we do not use the output from checking somalier not verifybamid but poll
+    # the checkpoint for these rules to enforce snakemake running these steps
+    # and verifying that they ran properly
+    checkpoints.check_rgs_contamination.get(**wildcards)
+    checkpoints.check_read_group_relatedness.get(**wildcards)
+    read_groups = aggregate_read_groups(sample=wildcards["sample"])
     return expand(
         f"../scratch/{wildcards['sample']}/{wildcards['sample']}_{{rg}}.bam",
         rg=read_groups,
     )
 
 
-def aggregate_read_groups_verifybamid(wildcards):
-    """
-    Returns a list of all .selfSM files for the given sample, one per read group.
-    """
-    read_groups = aggregate_read_groups(wildcards)
-    return expand(
-        f"../scratch/{wildcards['sample']}/{wildcards['sample']}_{{rg}}.selfSM",
-        rg=read_groups,
-    )
-
-
-def aggregate_read_groups(wildcards):
+def aggregate_read_groups(sample):
     """
     Returns a list of all read groups for the sample.
     If this function is run as part of an input function for a rule and the
     original file was a BAM, snakemake will infer it needs to run split_bam on it.
     """
     # need to handle case of BAM/FASTQs separately
-    if os.path.isfile(f"../input/bams/{wildcards['sample']}.bam"):
+    if os.path.isfile(f"../input/bams/{sample}.bam"):
         # N.B. we already know what this directory is, i.e. ../scratch/{sample},
         # but we must run checkpoints.split_bam.get() so that snakemake
         # infers the rule calling this is dependent upon split_bam
         split_bams_directory = os.path.dirname(
-            checkpoints.split_bam.get(**wildcards).output[0]
+            checkpoints.split_bam.get(sample=sample).output[0]
         )
-        return glob_wildcards(
-            f"{split_bams_directory}/{wildcards['sample']}_original_{{rg,\d+}}.bam"
+        fns = glob_wildcards(
+            f"{split_bams_directory}/{sample}_original_{{rg,\d+}}.bam"
         ).rg
     else:
         # use as input the BAMs corresponding to each pair of FASTQs
-        return glob_wildcards(
-            f"../input/fastqs/{wildcards['sample']}_{{rg,\d+}}.R1.fastq.gz"
-        ).rg
+        fns = glob_wildcards(f"../input/fastqs/{sample}_{{rg,\d+}}.R1.fastq.gz").rg
+    if fns:
+        return fns
+    else:
+        raise ValueError(
+            f"Error in aggregate_read_groups finding read groups for {sample}."
+        )
 
 
-rule all:
+def get_final_bam(wildcards):
     """
-    Dummy rule to get:
-    1. joint-called VCF
-    2. single-sample GVCFs
-    3. QC information
+    Returns the path to the final BAM for the sample while enforcing that it is
+    insufficiently contaminated to continue.
     """
-    input:
-        "../output/joint_vcf/final.vcf.gz",
-        expand("../output/gvcfs/{sample}.g.vcf.gz", sample=get_samples()),
+    checkpoints.check_contamination.get(**wildcards)
+    return f"../output/bams/{wildcards['sample']}.bam"
+
+
+def get_intervals():
+    """
+    Returns a sorted list of intervals for use in inferring what VCF/gVCFs should exist.
+    """
+    # need to make sure we actually created the inveral files first or the list will be empty
+    checkpoints.create_interval_files.get()
+    # sorting ensures we merge in the proper order, not random
+    return sorted(
+        [
+            int(value)
+            for value in glob_wildcards(
+                "../resources/intervals/intervalfile_{group,\d+}.list"
+            ).group
+        ]
+    )
 
 
 rule get_read_groups:
@@ -189,6 +227,8 @@ rule get_read_groups:
         "../input/bams/{sample}.bam",
     output:
         "../scratch/{sample}/{sample}.rgs",
+    resources:
+        walltime=0,
     conda:
         "envs/samtools.yaml"
     shell:
@@ -205,12 +245,14 @@ checkpoint split_bam:
         rgs="../scratch/{sample}/{sample}.rgs",
     output:
         touch("../scratch/{sample}/{sample}.split_bam.done"),
-    conda:
-        "envs/samtools.yaml"
+    resources:
+        walltime=partial(increment, base=8, step=8),
     log:
         "../logs/split_bam/{sample}.log",
     group:
         "bam_to_fastq"
+    conda:
+        "envs/samtools.yaml"
     shell:
         "samtools split -f ../scratch/{wildcards.sample}/"
         "{wildcards.sample}_original_%#.bam {input.bam} > {log} 2>&1"
@@ -226,12 +268,14 @@ rule extract_fastq_from_bam:
         bam="../scratch/{sample}/{sample}_original_{rg}.bam",
     output:
         temp("../scratch/{sample}/{sample}_{rg}.fq"),
-    conda:
-        "envs/samtools.yaml"
+    resources:
+        walltime=partial(increment, base=8, step=8),
     log:
         "../logs/extract_fastqs/{sample}_{rg}.log",
     group:
         "bam_to_fastq"
+    conda:
+        "envs/samtools.yaml"
     shell:
         "samtools fastq -0 /dev/null {input.bam} > {output} 2> {log}"
 
@@ -247,16 +291,16 @@ rule bwa_align_and_sort_interleaved:
         # this is not actually used by the
         # wrapper (must be specified as params.index) this is here to ensure the
         # reference genome actually exists
-        genome=reference_data["genome"],
+        genome=reference_data["fasta"],
     output:
         temp("../scratch/{sample}/{sample}_{rg}.bam"),
-    threads: 8
     params:
         extra=bwa_options_interleaved,
         sorting="samtools",
-        index=reference_data["genome"],
+        index=reference_data["fasta"],
     resources:
-        walltime=16,
+        walltime=partial(increment, base=16, step=8),
+    threads: 8
     log:
         "../logs/bwa/{sample}_{rg}.log",
     wrapper:
@@ -280,16 +324,16 @@ rule bwa_align_and_sort_paired_end:
         # this is not actually used by the
         # wrapper (must be specified as params.index) this is here to ensure the
         # reference genome actually exists
-        genome=reference_data["genome"],
+        genome=reference_data["fasta"],
     output:
         temp("../scratch/{sample}/{sample}_{rg}.bam"),
     threads: 8
     params:
         extra=bwa_options_paired_end,
         sorting="samtools",
-        index=reference_data["genome"],
+        index=reference_data["fasta"],
     resources:
-        walltime=16,
+        walltime=partial(increment, base=16, step=8),
     log:
         "../logs/bwa/{sample}_{rg}.log",
     wrapper:
@@ -306,7 +350,7 @@ rule index_read_group:
     output:
         temp("../scratch/{sample}/{sample}_{rg}.bam.bai"),
     resources:
-        queue="glean",
+        walltime=partial(increment, base=1, step=3),
     group:
         "somalier_rg"
     wrapper:
@@ -322,27 +366,40 @@ rule verifybamid_read_group:
     input:
         bam="../scratch/{sample}/{sample}_{rg}.bam",
         bam_index="../scratch/{sample}/{sample}_{rg}.bam.bai",
-        ref=reference_data["genome"],
+        ref=reference_data["fasta"],
     output:
         selfsm="../scratch/{sample}/{sample}_{rg}.selfSM",
         ancestry="../scratch/{sample}/{sample}_{rg}.ancestry",
+    params:
+        # extracts ending numbers, e.g. 38 from hg38 or 37 from grch37
+        genome_build=re.search(r"(\d+)$", genome_build).group(),
     log:
         "../logs/verifybamid/{sample}_{rg}.log",
     wrapper:
         "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/verifybamid2/bio/verifybamid/verifybamid2"
 
 
-rule check_contamination:
+checkpoint check_rgs_contamination:
     """
     After running verifybamid2 on each read group BAM, check that the
     contamination from another human is sufficiently low.
     """
     input:
-        aggregate_read_groups_verifybamid,
+        # list of all .selfSM files for the given sample, one per read group.
+        lambda wildcards: expand(
+            f"../scratch/{wildcards['sample']}/{wildcards['sample']}_{{rg}}.selfSM",
+            rg=aggregate_read_groups(wildcards),
+        ),
     output:
-        touch("../scratch/{sample}/check_contamination.done"),
+        touch("../scratch/{sample}/check_contamination_rgs.done"),
     params:
         max_contamination=config["max_contamination"],
+        failure_file="../scratch/{sample}/check_contamination_rgs.failure",
+        email=config["email"],
+    resources:
+        walltime=0,
+    log:
+        "../logs/check_contamination/{sample}_rgs.log",
     script:
         "scripts/check_contamination.py"
 
@@ -356,34 +413,71 @@ rule somalier_extract_read_group:
     input:
         somalier="../bin/somalier",
         sites=f"../resources/sites.{config['genome_build']}.vcf.gz",
-        genome=reference_data["genome"],
+        genome=reference_data["fasta"],
         bam="../scratch/{sample}/{sample}_{rg}.bam",
         bam_index="../scratch/{sample}/{sample}_{rg}.bam.bai",
     output:
         temp("../scratch/{sample}/{sample}_{rg}.somalier"),
+    params:
+        # we prepend the read group and underscore to ensure somalier gives each
+        # read group a distinct id
+        sample_prefix=lambda wildcards: f"{wildcards['rg']}_",
     resources:
-        queue="glean",
+        walltime=0,
     group:
         "somalier_rg"
     shell:
         "t=$(mktemp -d) && {input.somalier} extract -d $t --sites {input.sites} "
-        "-f {input.genome} --sample-prefix {wildcards.rg}_ {input.bam} && "
+        "-f {input.genome} --sample-prefix {params.sample_prefix} {input.bam} && "
         "mv $t/{wildcards.sample}.somalier {output} && rmdir $t "
 
 
 rule somalier_relate_read_groups:
     """
-    Do pairwise kinship tests for all read group BAMs with somalier.
+    Do pairwise relatedness tests for all read group BAMs with somalier.
     https://github.com/brentp/somalier
     """
     input:
-        aggregate_read_groups_somalier,
+        # list of all data from "somalier extract" run on each read group for a sample
+        lambda wildcards: expand(
+            f"../scratch/{wildcards['sample']}/{wildcards['sample']}_{{rg}}.somalier",
+            rg=aggregate_read_groups(wildcards),
+        ),
     output:
         "../output/qc/{sample}/somalier.pairs.tsv",
+    params:
+        # necessary to run command in a different directory so we get the full
+        # paths to the input files
+        input_paths=lambda wildcards, input: [
+            os.path.abspath(input_path) for input_path in input
+        ],
+        output_directory=get_output_directory,
     resources:
-        queue="glean",
+        walltime=0,
     shell:
-        "d=$(dirname {output} && cd $d && somalier relate {input}"
+        "cd {params.output_directory} && somalier relate {params.input_paths}"
+
+
+checkpoint check_read_group_relatedness:
+    """
+    After running somalier relate on all read groups for the sample, confirm
+    that each read group comes from the same person.
+    https://github.com/brentp/somalier
+    """
+    input:
+        "../output/qc/{sample}/somalier.pairs.tsv",
+    output:
+        touch("../scratch/{sample}/check_rg_relatedness.done"),
+    params:
+        min_relatedness=config["min_relatedness"],
+        failure_file="../scratch/{sample}/check_rg_relatedness.failure",
+        email=config["email"],
+    resources:
+        walltime=0,
+    log:
+        "../logs/check_rg_relatedness/{sample}.log",
+    script:
+        "scripts/check_rg_relatedness.py"
 
 
 rule mark_duplicates:
@@ -397,26 +491,27 @@ rule mark_duplicates:
         aggregate_read_groups_markduplicates,
     output:
         bam=temp("../scratch/{sample}/{sample}_markdup.bam"),
-        metrics="../output/qc/{sample}_metrics.txt",
+        metrics="../output/qc/mark_duplicates/{sample}.txt",
     params:
         java_opts=get_java_temp_directory,
     resources:
         mem_mb=3000,
+        walltime=partial(increment, base=16, step=8),
     log:
         "../logs/mark_duplicates/{sample}.log",
     wrapper:
         "0.78.0/bio/picard/markduplicates"
 
 
-rule base_recalibrator:
+rule base_recalibration:
     """
     Generate a model for read base quality score recalibration.
     https://gatk.broadinstitute.org/hc/en-us/articles/360037593511-BaseRecalibrator
     """
     input:
         bam="../scratch/{sample}/{sample}_markdup.bam",
-        dict=reference_data["genome_dict"],
-        ref=reference_data["genome"],
+        dict=reference_data["fasta_dict"],
+        ref=reference_data["fasta"],
         known=[
             reference_data["dbsnp"],
             reference_data["indel_mills"],
@@ -428,32 +523,149 @@ rule base_recalibrator:
         java_opts=get_java_temp_directory,
     resources:
         mem_mb=3000,
+        walltime=partial(increment, base=8, step=8),
     log:
         "../logs/base_recalibration/{sample}.log",
     wrapper:
         "0.78.0/bio/gatk/baserecalibrator"
 
 
-rule apply_BQSR:
+rule apply_base_recalibration:
     """
     Apply the model for read base quality score recalibration.
     https://gatk.broadinstitute.org/hc/en-us/articles/360037225212-ApplyBQSR
     """
     input:
         bam="../scratch/{sample}/{sample}_markdup.bam",
-        dict=reference_data["genome_dict"],
+        dict=reference_data["fasta_dict"],
         recal_table="../output/recal_tables/{sample}_recal.table",
-        ref=reference_data["genome"],
+        ref=reference_data["fasta"],
     output:
         bam="../output/bams/{sample}.bam",
     params:
         java_opts=get_java_temp_directory,
     resources:
         mem_mb=3000,
+        walltime=partial(increment, base=8, step=8),
     log:
-        "../logs/apply_BQSR/{sample}.log",
+        "../logs/apply_base_recalibration/{sample}.log",
     wrapper:
         "0.78.0/bio/gatk/applybqsr"
+
+
+rule collectinsertsizemetrics:
+    """
+    Analyzes the distribution of insert sizes from the final BAM and produces a
+    histogram summarizing this information.
+    https://gatk.broadinstitute.org/hc/en-us/articles/360037055772-CollectInsertSizeMetrics-Picard-
+    """
+    input:
+        bam="../output/bams/{sample}.bam",
+    output:
+        txt="../output/qc/collectinsertsizemetrics/{sample}.txt",
+        pdf="../output/qc/collectinsertsizemetrics/{sample}.pdf",
+    params:
+        java_opts=get_java_temp_directory,
+    resources:
+        mem_mb=3000,
+        walltime=partial(increment, base=8, step=8),
+    log:
+        "../logs/collectinsertsizemetrics/{sample}.bam",
+    wrapper:
+        "0.78.0/bio/picard/collectinsertsizemetrics"
+
+
+rule verifybamid:
+    """
+    Run verifybamid2 on the final BAM to check for intraspecies contamination.
+    https://github.com/Griffan/VerifyBamID
+    """
+    input:
+        bam="../output/bams/{sample}.bam",
+        ref=reference_data["fasta"],
+    output:
+        selfsm="../output/qc/verifybamid/{sample}.selfSM",
+        ancestry="../output/qc/verifybamid/{sample}.ancestry",
+    params:
+        # extracts ending numbers, e.g. 38 from hg38 or 37 from grch37
+        genome_build=re.search(r"(\d+)$", genome_build).group(),
+    resources:
+        walltime=partial(increment, base=4, step=8),
+    log:
+        "../logs/verifybamid/{sample}.log",
+    wrapper:
+        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/verifybamid2/bio/verifybamid/verifybamid2"
+
+
+checkpoint check_contamination:
+    """
+    After running verifybamid2 on the final BAM, check that the
+    contamination from another human is sufficiently low.
+    """
+    input:
+        "../output/qc/verifybamid/{sample}.selfSM",
+    output:
+        touch("../scratch/{sample}/check_contamination.done"),
+    params:
+        max_contamination=config["max_contamination"],
+        failure_file="../scratch/{sample}/check_contamination.failure",
+        email=config["email"],
+    resources:
+        walltime=0,
+    log:
+        "../logs/check_contamination/{sample}.log",
+    script:
+        "scripts/check_contamination.py"
+
+
+rule mosdepth:
+    """
+    Get average read depth and number of bases reaching the specified thresholds
+    with mosdepth.
+    https://github.com/brentp/mosdepth
+    """
+    input:
+        bam="../output/bams/{sample}.bam",
+        bed=reference_data[config["sequencing_type"]]["bed"],
+    output:
+        multiext(
+            "../output/qc/mosdepth/{sample}",
+            ".thresholds.bed.gz",
+            ".regions.bed.gz",
+            ".mosdepth.region.dist.txt",
+        ),
+        summary="../output/qc/mosdepth/{sample}.mosdepth.summary.txt",
+    params:
+        thresholds=",".join([str(t) for t in config["mosdepth"]["thresholds"]]),
+        extra=get_options("mosdepth", ignore=["thresholds"]),
+    resources:
+        walltime=partial(increment, base=1, step=3),
+    log:
+        "../logs/mosdepth/{sample}.log",
+    wrapper:
+        "0.78.0/bio/mosdepth"
+
+
+checkpoint create_interval_files:
+    """
+    Create interval files for variant calling parallelization.
+    This is adjusted for WES/WGS due to the different magnitude of data involved.
+    """
+    input:
+        reference_data["fasta_dict"],
+    output:
+        touch("../scratch/create_interval_files.done"),
+    params:
+        megabases=config["create_interval_files"][config["sequencing_type"]],
+        use_MT_flag="--use-MT" if genome_build == "grch37" else "",
+        no_chr_prefix_flag="--no-chr-prefix" if genome_build == "grch37" else "",
+        output_directory="../resources/intervals",
+    resources:
+        walltime=0,
+    shell:
+        "scripts/make_interval_files.py --dict {input} "
+        "--megabases {params.megabases} {params.use_MT_flag} "
+        "{params.no_chr_prefix_flag} --output-directory {params.output_directory}"
 
 
 rule haplotype_caller:
@@ -462,16 +674,19 @@ rule haplotype_caller:
     https://gatk.broadinstitute.org/hc/en-us/articles/360037225632-HaplotypeCaller
     """
     input:
-        bam="../output/bams/{sample}.bam",
-        ref=reference_data["genome"],
-        interval_file="../resources/intervals/intervalfile_{group}.list",  # parallelization - currently 120x
+        bam=get_final_bam,
+        ref=reference_data["fasta"],
+        interval_file="../resources/intervals/intervalfile_{group}.list",
     output:
         gvcf="../scratch/{sample}/gvcfs/{sample}_{group}.g.vcf.gz",
     params:
         java_opts=get_java_temp_directory,
-        extra=haplotype_caller_options,
+        extra=lambda wildcards, input: get_options(
+            "haplotype_caller", extra=[("intervals", input.interval_file)]
+        ),
     resources:
         mem_mb=3000,
+        walltime=partial(increment, base=8, step=8),
     log:
         "../logs/haplotype_caller/{sample}_{group}.log",
     wrapper:
@@ -486,17 +701,9 @@ rule merge_gvcfs:
     https://broadinstitute.github.io/picard/command-line-overview.html#MergeVcfs
     """
     input:
-        # sorting ensures we merge in the proper order, not random
-        vcfs=expand(
+        vcfs=lambda wildcards: expand(
             "../scratch/{{sample}}/gvcfs/{{sample}}_{group}.g.vcf.gz",
-            group=sorted(
-                [
-                    int(value)
-                    for value in glob_wildcards(
-                        "../resources/intervals/intervalfile_{group,\d+}.list"
-                    ).group
-                ]
-            ),
+            group=get_intervals(),
         ),
     output:
         "../output/gvcfs/{sample}.g.vcf.gz",
@@ -505,7 +712,7 @@ rule merge_gvcfs:
     resources:
         mem_mb=3000,
         mail="ae",
-        walltime=1,
+        walltime=partial(increment, base=1, step=3),
     log:
         "../logs/merge_gvcfs/{sample}.log",
     wrapper:
@@ -530,6 +737,8 @@ rule genomics_db_import:
         java_opts=get_java_temp_directory,
         extra="--tmp-dir $TMPDIR",
         intervals="../resources/intervals/intervalfile_{group}.list",
+    resources:
+        walltime=partial(increment, base=8, step=8),
     log:
         "../logs/genomics_db_import/{group}.log",
     group:
@@ -545,7 +754,7 @@ rule genotype_gvcfs:
     """
     input:
         genomicsdb="../scratch/genomics_db_{group}",
-        ref=reference_data["genome"],
+        ref=reference_data["fasta"],
         interval_file="../resources/intervals/intervalfile_{group}.list",
         known=reference_data["dbsnp"],
     output:
@@ -553,6 +762,8 @@ rule genotype_gvcfs:
     params:
         java_opts=get_java_temp_directory,
         extra=get_options("genotype_gvcfs"),
+    resources:
+        walltime=partial(increment, base=8, step=8),
     log:
         "../logs/genotype_gvcfs/{group}.log",
     group:
@@ -570,17 +781,8 @@ rule merge_vcfs:
     https://broadinstitute.github.io/picard/command-line-overview.html#MergeVcfs
     """
     input:
-        # sorting ensures we merge in the proper order, not random
-        vcfs=expand(
-            "../scratch/vcfs/{group}.vcf",
-            group=sorted(
-                [
-                    int(value)
-                    for value in glob_wildcards(
-                        "../resources/intervals/intervalfile_{group,\d+}.list"
-                    ).group
-                ]
-            ),
+        vcfs=lambda wildcards: expand(
+            "../scratch/vcfs/{group}.vcf", group=get_intervals()
         ),
     output:
         temp("../scratch/vcfs/merged.vcf.gz"),
@@ -589,7 +791,7 @@ rule merge_vcfs:
     resources:
         mem_mb=3000,
         mail="ae",
-        walltime=1,
+        walltime=partial(increment, base=1, step=3),
     log:
         "../logs/merge_vcfs/merged_for_vqsr.log",
     wrapper:
@@ -604,7 +806,7 @@ rule snp_recalibration:
     """
     input:
         vcf="../scratch/vcfs/merged.vcf.gz",
-        ref=reference_data["genome"],
+        ref=reference_data["fasta"],
         hapmap=reference_data["hapmap"],
         omni=reference_data["omni"],
         onekg=reference_data["onekg"],
@@ -618,6 +820,8 @@ rule snp_recalibration:
         extra=get_options("snp_recalibration", ignore=["resources", "annotation"]),
         resources=config["snp_recalibration"]["resources"],
         annotation=config["snp_recalibration"]["annotation"],
+    resources:
+        walltime=partial(increment, base=8, step=8),
     log:
         "../logs/snp_recalibration/log",
     wrapper:
@@ -634,13 +838,15 @@ rule apply_snp_recalibration:
         vcf="../scratch/vcfs/merged.vcf.gz",
         recal="../scratch/recal/snps.recal",
         tranches="../scratch/recal/snps.tranches",
-        ref=reference_data["genome"],
+        ref=reference_data["fasta"],
     output:
         vcf=temp("../scratch/vcfs/recal_snp.vcf"),
     params:
         java_opts=get_java_temp_directory,
         mode="SNP",
         extra=get_options("apply_snp_recalibration"),
+    resources:
+        walltime=partial(increment, base=8, step=8),
     log:
         "../logs/apply_snp_recalibration/log",
     group:
@@ -657,7 +863,7 @@ rule indel_recalibration:
     """
     input:
         vcf="../scratch/vcfs/merged.vcf.gz",
-        ref=reference_data["genome"],
+        ref=reference_data["fasta"],
         mills=reference_data["indel_mills"],
         axiom=reference_data["axiom"],
         dbsnp=reference_data["dbsnp"],
@@ -670,6 +876,8 @@ rule indel_recalibration:
         extra=get_options("indel_recalibration", ignore=["resources", "annotation"]),
         resources=config["indel_recalibration"]["resources"],
         annotation=config["indel_recalibration"]["annotation"],
+    resources:
+        walltime=partial(increment, base=8, step=8),
     log:
         "../logs/indel_recalibration/log",
     wrapper:
@@ -686,19 +894,73 @@ rule apply_indel_recalibration:
         vcf="../scratch/vcfs/recal_snp.vcf",
         recal="../scratch/recal/indels.recal",
         tranches="../scratch/recal/indels.tranches",
-        ref=reference_data["genome"],
+        ref=reference_data["fasta"],
     output:
         vcf="../output/joint_vcf/final.vcf.gz",
     params:
         java_opts=get_java_temp_directory,
         mode="INDEL",
         extra=get_options("apply_indel_recalibration"),
+    resources:
+        walltime=partial(increment, base=8, step=8),
     log:
         "../logs/apply_indel_recalibration/log",
     group:
         "apply_vqsr"
     wrapper:
         "0.78.0/bio/gatk/applyvqsr"
+
+
+rule somalier_extract_joint_vcf:
+    """
+    Extract the information somalier needs to check relatedness of all samples
+    from the joint genotyped VCF.
+    https://github.com/brentp/somalier
+    """
+    input:
+        somalier="../bin/somalier",
+        sites=f"../resources/sites.{config['genome_build']}.vcf.gz",
+        genome=reference_data["fasta"],
+        vcf="../output/joint_vcf/final.vcf.gz",
+    output:
+        expand("../scratch/extracted/{sample}.somalier", sample=get_samples()),
+    params:
+        output_directory=get_output_directory,
+    resources:
+        walltime=partial(increment, base=1, step=3),
+    group:
+        "somalier_vcf"
+    shell:
+        "{input.somalier} extract -d {params.output_directory} "
+        "--sites {input.sites} -f {input.genome} {input.vcf}"
+
+
+rule somalier_relate_samples:
+    """
+    Do pairwise relatedness tests for all samples with somalier.
+    Uses samples.ped in the input directory if present.
+    https://github.com/brentp/somalier
+    """
+    input:
+        expand("../scratch/extracted/{sample}.somalier", sample=get_samples()),
+    output:
+        "../output/qc/somalier/somalier.pairs.tsv",
+    params:
+        # necessary to run command in a different directory so we get the full
+        # paths to the input files
+        input_paths=lambda wildcards, input: [
+            os.path.abspath(input_path) for input_path in input
+        ],
+        output_directory=get_output_directory,
+        ped=lambda wildcards: (
+            f"--ped {os.path.abspath('../input/samples.ped')}"
+            if os.path.isfile("../input/samples.ped")
+            else ""
+        ),
+    resources:
+        walltime=0,
+    shell:
+        "cd {params.output_directory} && somalier relate {params.ped} {params.input_paths}"
 
 
 rule copy_program_to_scratch:
@@ -709,10 +971,12 @@ rule copy_program_to_scratch:
         "/projects/ps-gleesonlab3/resources/bin/{program}",
     output:
         "../bin/{program}",
+    params:
+        output_directory=get_output_directory,
     resources:
-        queue="glean",
+        walltime=1,
     shell:
-        "rsync -L {input} $(dirname {output})"
+        "rsync -L {input} {params.output_directory}"
 
 
 rule copy_resource_to_scratch:
@@ -723,7 +987,9 @@ rule copy_resource_to_scratch:
         f"/projects/ps-gleesonlab3/resources/{config['genome_build']}/{{resource}}",
     output:
         "../resources/{resource}",
+    params:
+        output_directory=get_output_directory,
     resources:
         walltime=1,
     shell:
-        "rsync -L {input}* $(dirname {output})"
+        "rsync -L {input}* {params.output_directory}"

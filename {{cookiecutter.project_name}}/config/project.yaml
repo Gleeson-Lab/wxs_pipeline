@@ -1,1 +1,0 @@
-genome_build: "{{cookiecutter.genome_build}}"
