@@ -439,7 +439,8 @@ rule somalier_relate_read_groups:
     """
     input:
         # list of all data from "somalier extract" run on each read group for a sample
-        lambda wildcards: expand(
+        somalier="../bin/somalier",
+        somalier_fns=lambda wildcards: expand(
             f"../scratch/{wildcards['sample']}/{wildcards['sample']}_{{rg}}.somalier",
             rg=aggregate_read_groups(wildcards),
         ),
@@ -449,13 +450,13 @@ rule somalier_relate_read_groups:
         # necessary to run command in a different directory so we get the full
         # paths to the input files
         input_paths=lambda wildcards, input: [
-            os.path.abspath(input_path) for input_path in input
+            os.path.abspath(input_path) for input_path in input["somalier_fns"]
         ],
         output_directory=get_output_directory,
     resources:
         walltime=0,
     shell:
-        "cd {params.output_directory} && somalier relate {params.input_paths}"
+        "cd {params.output_directory} && {input.somalier} relate {params.input_paths}"
 
 
 checkpoint check_read_group_relatedness:
@@ -898,7 +899,7 @@ rule apply_indel_recalibration:
     output:
         vcf="../output/joint_vcf/final.vcf.gz",
     params:
-        java_opts=get_java_temp_directory,
+        omava_opts=get_java_temp_directory,
         mode="INDEL",
         extra=get_options("apply_indel_recalibration"),
     resources:
@@ -942,14 +943,17 @@ rule somalier_relate_samples:
     https://github.com/brentp/somalier
     """
     input:
-        expand("../scratch/extracted/{sample}.somalier", sample=get_samples()),
+        somalier="../bin/somalier",
+        somalier_fns=expand(
+            "../scratch/extracted/{sample}.somalier", sample=get_samples()
+        ),
     output:
         "../output/qc/somalier/somalier.pairs.tsv",
     params:
         # necessary to run command in a different directory so we get the full
         # paths to the input files
         input_paths=lambda wildcards, input: [
-            os.path.abspath(input_path) for input_path in input
+            os.path.abspath(input_path) for input_path in input["somalier_fns"]
         ],
         output_directory=get_output_directory,
         ped=lambda wildcards: (
@@ -960,7 +964,7 @@ rule somalier_relate_samples:
     resources:
         walltime=0,
     shell:
-        "cd {params.output_directory} && somalier relate {params.ped} {params.input_paths}"
+        "cd {params.output_directory} && {input.somalier} relate {params.ped} {params.input_paths}"
 
 
 rule copy_program_to_scratch:
