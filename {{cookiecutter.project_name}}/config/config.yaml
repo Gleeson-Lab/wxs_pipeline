@@ -42,6 +42,9 @@ mosdepth:
   thresholds: [20, 30, 60, 100, 200]
 max_contamination: {{cookiecutter.max_intraspecies_contamination}} # maximum tolerable intra-species contamination
 min_relatedness: {{cookiecutter.min_identity_relatedness}} # minimum tolerable relatedness for two read groups from same individual
+cryptic_relatedness_threshold: 0.2 # flag any pair of samples labeled as coming from different families with greater than this relatedness
+intra_family_cryptic_relatedness_threshold: 0.3 # flag any pair of samples from the same family but not documented as being siblings nor parent-child
+first_degree_relatedness: {min: 0.4, max: 0.6}
 create_interval_files: # stores MB to use for interval files
   exome: 100
   genome: 30

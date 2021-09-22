@@ -3,7 +3,7 @@ from email.mime.text import MIMEText
 
 def email_user_with_error(email, subject, message):
     print(f"sending email from {{cookiecutter.project_name}} to {email} "
-          f"with with {subject=} and {message=}")
+          f"with {subject=} and {message=}")
     msg = MIMEText(message)
     msg["From"] = "{{cookiecutter.project_name}}"
     msg["To"] = email

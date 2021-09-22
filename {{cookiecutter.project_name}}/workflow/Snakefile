@@ -11,6 +11,7 @@ localrules:
     copy_program_to_scratch,
     somalier_relate_samples,
     create_interval_files,
+    check_relatedness,
 
 
 import os
@@ -67,6 +68,20 @@ def get_samples():
         raise ValueError("Didn't find any samples in ../input.")
 
 
+all_list = [
+    "../output/qc/somalier/somalier.pairs.tsv",
+    expand("../output/gvcfs/{sample}.g.vcf.gz", sample=get_samples()),
+    expand("../output/qc/mosdepth/{sample}.mosdepth.summary.txt", sample=get_samples()),
+    expand("../output/qc/collectinsertsizemetrics/{sample}.txt", sample=get_samples()),
+]
+
+
+# if PED file is included, check relatedness also
+PED_FILE = "../input/samples.ped"
+if os.path.isfile(PED_FILE):
+    all_list.append("../scratch/check_relatedness.done")
+
+
 rule all:
     """
     Dummy rule to get:
@@ -75,14 +90,7 @@ rule all:
     3. QC information
     """
     input:
-        "../output/qc/somalier/somalier.pairs.tsv",
-        expand("../output/gvcfs/{sample}.g.vcf.gz", sample=get_samples()),
-        expand(
-            "../output/qc/mosdepth/{sample}.mosdepth.summary.txt", sample=get_samples()
-        ),
-        expand(
-            "../output/qc/collectinsertsizemetrics/{sample}.txt", sample=get_samples()
-        ),
+        all_list,
 
 
 def increment(wildcards, attempt, base, step):
@@ -939,7 +947,7 @@ rule somalier_extract_joint_vcf:
 rule somalier_relate_samples:
     """
     Do pairwise relatedness tests for all samples with somalier.
-    Uses samples.ped in the input directory if present.
+    Uses PED_FILE if present.
     https://github.com/brentp/somalier
     """
     input:
@@ -957,14 +965,40 @@ rule somalier_relate_samples:
         ],
         output_directory=get_output_directory,
         ped=lambda wildcards: (
-            f"--ped {os.path.abspath('../input/samples.ped')}"
-            if os.path.isfile("../input/samples.ped")
-            else ""
+            f"--ped {os.path.abspath(PED_FILE)}" if os.path.isfile(PED_FILE) else ""
         ),
     resources:
         walltime=0,
     shell:
         "cd {params.output_directory} && {input.somalier} relate {params.ped} {params.input_paths}"
+
+
+rule check_relatedness:
+    """
+    Check pairwise relatedness from somalier relate.  This assumes a PED file
+    has been provided and we check for relatedness in the expected range within
+    families and no cryptic relatedness.
+    """
+    input:
+        "../output/qc/somalier/somalier.pairs.tsv",
+    output:
+        touch("../scratch/check_relatedness.done"),
+    params:
+        ped=PED_FILE,
+        cryptic_relatedness_threshold=config["cryptic_relatedness_threshold"],
+        intra_family_cryptic_relatedness_threshold=config[
+            "intra_family_cryptic_relatedness_threshold"
+        ],
+        first_degree_relatedness_min=config["first_degree_relatedness"]["min"],
+        first_degree_relatedness_max=config["first_degree_relatedness"]["max"],
+        failure_file="../scratch/check_relatedness.failure",
+        email=config["email"],
+    resources:
+        walltime=0,
+    log:
+        "../logs/check_relatedness.log",
+    script:
+        "scripts/check_relatedness.py"
 
 
 rule copy_program_to_scratch:
