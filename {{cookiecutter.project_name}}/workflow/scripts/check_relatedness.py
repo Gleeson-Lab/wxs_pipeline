@@ -25,7 +25,7 @@ else:
     log_fh = sys.stdout
 try:
     relatedness_values = {}
-    with open(snakemake.input[0]) as relatedness_fh:
+    with open(snakemake.input["pairs"]) as relatedness_fh:
         header = relatedness_fh.readline().strip().split("\t")
         for line in relatedness_fh:
             d = dict(zip(header, line.strip().split("\t")))
@@ -33,7 +33,7 @@ try:
             if sample_a > sample_b:
                 sample_a, sample_b = sample_b, sample_a
             relatedness_values[(sample_a, sample_b)] = float(d["relatedness"])
-    with open(snakemake.params.ped) as ped_fh:
+    with open(snakemake.input["ped"]) as ped_fh:
         ped = Pedigree(ped_fh)
     valid_count = 0
     child_parent_errors = []

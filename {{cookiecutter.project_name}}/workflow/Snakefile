@@ -12,6 +12,8 @@ localrules:
     somalier_relate_samples,
     create_interval_files,
     check_relatedness,
+    predict_sex,
+    check_sex,
 
 
 import os
@@ -69,7 +71,7 @@ def get_samples():
 
 
 all_list = [
-    "../output/qc/somalier/somalier.pairs.tsv",
+    "../output/qc/somalier/samples_with_predicted_sex.ped",
     expand("../output/gvcfs/{sample}.g.vcf.gz", sample=get_samples()),
     expand("../output/qc/mosdepth/{sample}.mosdepth.summary.txt", sample=get_samples()),
     expand("../output/qc/collectinsertsizemetrics/{sample}.txt", sample=get_samples()),
@@ -80,6 +82,7 @@ all_list = [
 PED_FILE = "../input/samples.ped"
 if os.path.isfile(PED_FILE):
     all_list.append("../scratch/check_relatedness.done")
+    all_list.append("../scratch/check_sex.done")
 
 
 rule all:
@@ -957,6 +960,7 @@ rule somalier_relate_samples:
         ),
     output:
         "../output/qc/somalier/somalier.pairs.tsv",
+        "../output/qc/somalier/somalier.samples.tsv",
     params:
         # necessary to run command in a different directory so we get the full
         # paths to the input files
@@ -973,6 +977,59 @@ rule somalier_relate_samples:
         "cd {params.output_directory} && {input.somalier} relate {params.ped} {params.input_paths}"
 
 
+rule predict_sex:
+    """
+    Check the ratio of heterozygous:homozygous calls on the X chromosome as
+    reported by somalier.
+    NYI: prediction of sex chromosome aneuploidies
+    """
+    input:
+        "../output/qc/somalier/somalier.samples.tsv",
+    output:
+        "../output/qc/somalier/samples_with_predicted_sex.ped",
+    params:
+        sex_check_threshold=config["sex_check_threshold"],
+    resources:
+        walltime=0,
+    run:
+        with open(input[0]) as samples_fh, open(output[0], "w") as ped_fh:
+            header = samples_fh.readline().strip().split("\t")
+            for line in samples_fh:
+                d = dict(zip(header, line.strip().split("\t")))
+                het_hom_ratio = int(d["X_het"]) / (
+                    int(d["X_hom_ref"]) + int(d["X_hom_alt"])
+                )
+                if het_hom_ratio < params.sex_check_threshold:
+                    d["predicted_sex"] = 1
+                else:
+                    d["predicted_sex"] = 2
+                ped_fh.write(
+                    "{#family_id}\t{sample_id}\t{paternal_id}\t{maternal_id}"
+                    "\t{predicted_sex}\t{phenotype}\n".format(**d)
+                )
+
+
+rule check_sex:
+    """
+    Check the predicted sex from the predict_sex classifier against the original
+    PED file.
+    """
+    input:
+        predicted_ped="../output/qc/somalier/samples_with_predicted_sex.ped",
+        original_ped=PED_FILE,
+    output:
+        touch("../scratch/check_sex.done"),
+    params:
+        failure_file="../scratch/check_sex.failure",
+        email=config["email"],
+    resources:
+        walltime=0,
+    log:
+        "../logs/check_sex.log",
+    script:
+        "scripts/check_sex.py"
+
+
 rule check_relatedness:
     """
     Check pairwise relatedness from somalier relate.  This assumes a PED file
@@ -980,11 +1037,11 @@ rule check_relatedness:
     families and no cryptic relatedness.
     """
     input:
-        "../output/qc/somalier/somalier.pairs.tsv",
+        pairs="../output/qc/somalier/somalier.pairs.tsv",
+        ped=PED_FILE,
     output:
         touch("../scratch/check_relatedness.done"),
     params:
-        ped=PED_FILE,
         cryptic_relatedness_threshold=config["cryptic_relatedness_threshold"],
         intra_family_cryptic_relatedness_threshold=config[
             "intra_family_cryptic_relatedness_threshold"
