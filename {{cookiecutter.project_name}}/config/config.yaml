@@ -40,6 +40,8 @@ mosdepth:
   fast-mode: ""
   no-per-base: ""
   thresholds: [20, 30, 60, 100, 200]
+somalier:
+  url: github.com/brentp/somalier/releases/download/v0.2.13/somalier # not available via conda (currently)
 max_contamination: {{cookiecutter.max_intraspecies_contamination}} # maximum tolerable intra-species contamination
 min_relatedness: {{cookiecutter.min_identity_relatedness}} # minimum tolerable relatedness for two read groups from same individual
 cryptic_relatedness_threshold: 0.2 # flag any pair of samples labeled as coming from different families with greater than this relatedness
@@ -51,32 +53,48 @@ create_interval_files: # stores MB to use for interval files
   genome: 30
 
 #reference files - don't change unless you have a good reason to do so, change genome_build variable instead
+# This is all designed to use downloadable resources from public sources.  The code requires no leading http:// or https:// prefix and is not designed for running on local files.
 reference:
   hg38:
-    axiom: ../resources/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz
-    fasta: ../resources/Homo_sapiens_assembly38.fasta
-    fasta_dict: ../resources/Homo_sapiens_assembly38.dict
-    dbsnp: ../resources/Homo_sapiens_assembly38.dbsnp138.vcf
-    hapmap: ../resources/hapmap_3.3.hg38.vcf.gz
-    indel_mills: ../resources/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz
-    indel_known: ../resources/Homo_sapiens_assembly38.known_indels.vcf.gz
-    omni: ../resources/1000G_omni2.5.hg38.vcf.gz
-    onekg: ../resources/1000G_phase1.snps.high_confidence.hg38.vcf.gz
+    axiom: storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz
+    axiom_idx: storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Axiom_Exome_Plus.genotypes.all_populations.poly.hg38.vcf.gz.tbi
+    fasta: storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta
+    fasta_dict: storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dict
+    fasta_idx: [storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.64.alt, storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.64.amb, storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.64.ann, storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.64.bwt, storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.64.pac, storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.64.sa, storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.amb, storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.ann, storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.bwt, storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.fai, storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.pac, storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.fasta.sa]
+    dbsnp: storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf.gz
+    dbsnp_idx: storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.dbsnp138.vcf.gz.tbi
+    hapmap: storage.googleapis.com/genomics-public-data/resources/broad/hg38/v0/hapmap_3.3.hg38.vcf.gz
+    #hapmap_idx: storage.googleapis.com/genomics-public-data/resources/broad/hg38/v0/hapmap_3.3.hg38.vcf.gz.tbi
+    indel_known: storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.known_indels.vcf.gz
+    #indel_known_idx: storage.cloud.google.com/gcp-public-data--broad-references/hg38/v0/Homo_sapiens_assembly38.known_indels.vcf.gz.tbi
+    indel_mills: storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz
+    #indel_mills_idx: storage.googleapis.com/gcp-public-data--broad-references/hg38/v0/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz.tbi
+    omni: storage.googleapis.com/genomics-public-data/resources/broad/hg38/v0/1000G_omni2.5.hg38.vcf.gz
+    omni_idx: storage.googleapis.com/genomics-public-data/resources/broad/hg38/v0/1000G_omni2.5.hg38.vcf.gz.tbi
+    onekg: storage.googleapis.com/genomics-public-data/resources/broad/hg38/v0/1000G_phase1.snps.high_confidence.hg38.vcf.gz
+    onekg_idx: storage.googleapis.com/genomics-public-data/resources/broad/hg38/v0/1000G_phase1.snps.high_confidence.hg38.vcf.gz.tbi
     exome:
-      bed: ../resources/CCDS.hg38.bed
+      bed: ../resources/hg38/CCDS.hg38.bed
     genome:
-      bed: ../resources/Homo_sapiens_assembly38.bed
-  grch37:
-    axiom: ../resources/Axiom_Exome_Plus.genotypes.all_populations.vcf.gz
-    fasta: ../resources/human_g1k_v37_decoy.fasta
-    fasta_dict: ../resources/human_g1k_v37_decoy.dict
-    dbsnp: ../resources/dbsnp_138.b37.vcf
-    hapmap: ../resources/hapmap_3.3.b37.sites.vcf
-    indel_mills: ../resources/Mills_and_1000G_gold_standard.indels.b37.sites.vcf
-    indel_known: ../resources/1000G_phase1.indels.b37.vcf
-    omni: ../resources/1000G_omni2.5.b37.sites.vcf
-    onekg: ../resources/1000G_phase1.snps.high_confidence.b37.sites.vcf
+      bed: ../resources/hg38/Homo_sapiens_assembly38.bed
+    somalier_sites: github.com/brentp/somalier/files/3412456/sites.hg38.vcf.gz
+  hg19:
+    axiom: storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Axiom_Exome_Plus.genotypes.all_populations.poly.vcf.gz
+    axiom_idx: storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Axiom_Exome_Plus.genotypes.all_populations.poly.vcf.gz.tbi
+    fasta: storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.fasta
+    fasta_dict: storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.dict
+    fasta_idx: [storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.fasta.64.amb, storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.fasta.64.ann, storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.fasta.64.bwt, storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.fasta.64.pac, storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.fasta.64.sa, storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.fasta.alt, storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.fasta.amb, storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.fasta.ann, storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.fasta.bwt, storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.fasta.fai]
+    dbsnp: storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.dbsnp138.vcf
+    dbsnp_idx: storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/Homo_sapiens_assembly19.dbsnp138.vcf.idx
+    hapmap: storage.googleapis.com/gatk-legacy-bundles/b37/hapmap_3.3.b37.vcf.gz
+    indel_known: storage.googleapis.com/gatk-legacy-bundles/b37/1000G_phase1.indels.b37.vcf.gz
+    indel_mills: storage.googleapis.com/gatk-legacy-bundles/b37/Mills_and_1000G_gold_standard.indels.b37.vcf.gz
+    omni: storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/1000G_omni2.5.b37.vcf.gz
+    omni_idx: storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/1000G_omni2.5.b37.vcf.gz.tbi
+    onekg: storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/1000G_phase1.snps.high_confidence.b37.vcf.gz
+    onekg_idx: storage.googleapis.com/gcp-public-data--broad-references/hg19/v0/1000G_phase1.snps.high_confidence.b37.vcf.gz
     exome:
-      bed: ../resources/CCDS.grch37.bed
+      bed: ../resources/grch37/CCDS.grch37.bed
     genome:
-      bed: ../resources/human_g1k_v37_decoy.bed
+      bed: ../resources/grch37/human_g1k_v37_decoy.bed
+    somalier_sites: github.com/brentp/somalier/files/3412455/sites.GRCh37.vcf.gz

@@ -1,7 +1,7 @@
 {
 	"project_name": "wgs_pipeline",
 	"email": "",
-	"genome_build": ["hg38", "grch37"],
+	"genome_build": ["hg38", "hg19"],
 	"sequencing_type": ["genome", "exome"],
 	"max_intraspecies_contamination": "0.01",
 	"min_identity_relatedness": "0.99",

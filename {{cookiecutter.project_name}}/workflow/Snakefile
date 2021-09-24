@@ -8,7 +8,6 @@ localrules:
     check_rgs_contamination,
     check_contamination,
     check_read_group_relatedness,
-    copy_program_to_scratch,
     somalier_relate_samples,
     create_interval_files,
     check_relatedness,
@@ -18,21 +17,27 @@ localrules:
 
 import os
 import re
+from snakemake.remote.HTTP import RemoteProvider as HTTPRemoteProvider
 from functools import lru_cache, partial
 from glob import glob
 from utilities import get_options
 
 
-genome_build = config["genome_build"]
-reference_data = config["reference"][genome_build]
 sample_regex = "[a-zA-Z\d_-]+"  # sample identifiers must match this
-get_options = partial(get_options, config=config)
 
 
 wildcard_constraints:
     sample=sample_regex,
     rg="\d+",  # samtools labels as integers starting from 0
     group="\d+",  # the genome interval subsets to restrict variant calling to so as to achieve parallelization
+
+
+genome_build = config["genome_build"]
+references = config["reference"][genome_build]
+resources_directory = f"../resources/{genome_build}"
+get_options = partial(get_options, config=config)
+HTTP = HTTPRemoteProvider()
+download = partial(HTTP.remote, keep_local=True)
 
 
 @lru_cache
@@ -223,7 +228,7 @@ def get_intervals():
         [
             int(value)
             for value in glob_wildcards(
-                "../resources/intervals/intervalfile_{group,\d+}.list"
+                f"../{resources_directory}/intervals/intervalfile_{{group,\d+}}.list"
             ).group
         ]
     )
@@ -302,13 +307,15 @@ rule bwa_align_and_sort_interleaved:
         # this is not actually used by the
         # wrapper (must be specified as params.index) this is here to ensure the
         # reference genome actually exists
-        genome=reference_data["fasta"],
+        _ignore=[download(references["fasta"])] + [
+            download(r) for r in references["fasta_idx"]
+        ],
     output:
         temp("../scratch/{sample}/{sample}_{rg}.bam"),
     params:
         extra=bwa_options_interleaved,
         sorting="samtools",
-        index=reference_data["fasta"],
+        index=references["fasta"],
     resources:
         walltime=partial(increment, base=16, step=8),
     threads: 8
@@ -335,14 +342,16 @@ rule bwa_align_and_sort_paired_end:
         # this is not actually used by the
         # wrapper (must be specified as params.index) this is here to ensure the
         # reference genome actually exists
-        genome=reference_data["fasta"],
+        _ignore=[download(references["fasta"])] + [
+            download(r) for r in references["fasta_idx"]
+        ],
     output:
         temp("../scratch/{sample}/{sample}_{rg}.bam"),
     threads: 8
     params:
         extra=bwa_options_paired_end,
         sorting="samtools",
-        index=reference_data["fasta"],
+        index=references["fasta"],
     resources:
         walltime=partial(increment, base=16, step=8),
     log:
@@ -377,7 +386,7 @@ rule verifybamid_read_group:
     input:
         bam="../scratch/{sample}/{sample}_{rg}.bam",
         bam_index="../scratch/{sample}/{sample}_{rg}.bam.bai",
-        ref=reference_data["fasta"],
+        ref=download(references["fasta"]),
     output:
         selfsm="../scratch/{sample}/{sample}_{rg}.selfSM",
         ancestry="../scratch/{sample}/{sample}_{rg}.ancestry",
@@ -422,9 +431,9 @@ rule somalier_extract_read_group:
     https://github.com/brentp/somalier
     """
     input:
-        somalier="../bin/somalier",
-        sites=f"../resources/sites.{config['genome_build']}.vcf.gz",
-        genome=reference_data["fasta"],
+        somalier=download(config["somalier"]["url"]),
+        sites=download(references["somalier_sites"]),
+        genome=download(references["fasta"]),
         bam="../scratch/{sample}/{sample}_{rg}.bam",
         bam_index="../scratch/{sample}/{sample}_{rg}.bam.bai",
     output:
@@ -450,7 +459,7 @@ rule somalier_relate_read_groups:
     """
     input:
         # list of all data from "somalier extract" run on each read group for a sample
-        somalier="../bin/somalier",
+        somalier=download(config["somalier"]["url"]),
         somalier_fns=lambda wildcards: expand(
             f"../scratch/{wildcards['sample']}/{wildcards['sample']}_{{rg}}.somalier",
             rg=aggregate_read_groups(wildcards),
@@ -522,12 +531,21 @@ rule base_recalibration:
     """
     input:
         bam="../scratch/{sample}/{sample}_markdup.bam",
-        dict=reference_data["fasta_dict"],
-        ref=reference_data["fasta"],
+        dict=download(references["fasta_dict"]),
+        ref=download(references["fasta"]),
         known=[
-            reference_data["dbsnp"],
-            reference_data["indel_mills"],
-            reference_data["indel_known"],
+            download(references["dbsnp"]),
+            download(references["indel_mills"]),
+            download(references["indel_known"]),
+        ],
+        _ignore=[
+            download(r)
+            for r in [
+                references["dbsnp_idx"],
+                #references["indel_mills_idx"],
+                # references["indel_known_idx"],
+            ]
+            + references["fasta_idx"]
         ],
     output:
         recal_table="../output/recal_tables/{sample}_recal.table",
@@ -549,9 +567,10 @@ rule apply_base_recalibration:
     """
     input:
         bam="../scratch/{sample}/{sample}_markdup.bam",
-        dict=reference_data["fasta_dict"],
+        dict=download(references["fasta_dict"]),
         recal_table="../output/recal_tables/{sample}_recal.table",
-        ref=reference_data["fasta"],
+        ref=download(references["fasta"]),
+        _ignore=[download(r) for r in references["fasta_idx"]],
     output:
         bam="../output/bams/{sample}.bam",
     params:
@@ -594,7 +613,8 @@ rule verifybamid:
     """
     input:
         bam="../output/bams/{sample}.bam",
-        ref=reference_data["fasta"],
+        ref=download(references["fasta"]),
+        _ignore=[download(r) for r in references["fasta_idx"]],
     output:
         selfsm="../output/qc/verifybamid/{sample}.selfSM",
         ancestry="../output/qc/verifybamid/{sample}.ancestry",
@@ -638,7 +658,7 @@ rule mosdepth:
     """
     input:
         bam="../output/bams/{sample}.bam",
-        bed=reference_data[config["sequencing_type"]]["bed"],
+        bed=references[config["sequencing_type"]]["bed"],
     output:
         multiext(
             "../output/qc/mosdepth/{sample}",
@@ -664,7 +684,7 @@ checkpoint create_interval_files:
     This is adjusted for WES/WGS due to the different magnitude of data involved.
     """
     input:
-        reference_data["fasta_dict"],
+        download(references["fasta_dict"]),
     output:
         touch("../scratch/create_interval_files.done"),
     params:
@@ -687,8 +707,9 @@ rule haplotype_caller:
     """
     input:
         bam=get_final_bam,
-        ref=reference_data["fasta"],
+        ref=download(references["fasta"]),
         interval_file="../resources/intervals/intervalfile_{group}.list",
+        _ignore=[download(r) for r in references["fasta_idx"]],
     output:
         gvcf="../scratch/{sample}/gvcfs/{sample}_{group}.g.vcf.gz",
     params:
@@ -766,9 +787,12 @@ rule genotype_gvcfs:
     """
     input:
         genomicsdb="../scratch/genomics_db_{group}",
-        ref=reference_data["fasta"],
+        ref=download(references["fasta"]),
         interval_file="../resources/intervals/intervalfile_{group}.list",
-        known=reference_data["dbsnp"],
+        known=download(references["dbsnp"]),
+        _ignore=[
+            download(r) for r in [references["dbsnp_idx"]] + references["fasta_idx"]
+        ],
     output:
         vcf=temp("../scratch/vcfs/{group}.vcf"),
     params:
@@ -818,11 +842,21 @@ rule snp_recalibration:
     """
     input:
         vcf="../scratch/vcfs/merged.vcf.gz",
-        ref=reference_data["fasta"],
-        hapmap=reference_data["hapmap"],
-        omni=reference_data["omni"],
-        onekg=reference_data["onekg"],
-        dbsnp=reference_data["dbsnp"],
+        ref=download(references["fasta"]),
+        hapmap=download(references["hapmap"]),
+        omni=download(references["omni"]),
+        onekg=download(references["onekg"]),
+        dbsnp=download(references["dbsnp"]),
+        _ignore=[
+            download(r)
+            for r in [
+                # references["hapmap_idx"],
+                references["omni_idx"],
+                references["onekg_idx"],
+                references["dbsnp_idx"],
+            ]
+            + references["fasta_idx"]
+        ],
     output:
         vcf=temp("../scratch/recal/snps.recal"),
         tranches=temp("../scratch/recal/snps.tranches"),
@@ -850,7 +884,8 @@ rule apply_snp_recalibration:
         vcf="../scratch/vcfs/merged.vcf.gz",
         recal="../scratch/recal/snps.recal",
         tranches="../scratch/recal/snps.tranches",
-        ref=reference_data["fasta"],
+        ref=download(references["fasta"]),
+        _ignore=[download(r) for r in references["fasta_idx"]],
     output:
         vcf=temp("../scratch/vcfs/recal_snp.vcf"),
     params:
@@ -875,10 +910,19 @@ rule indel_recalibration:
     """
     input:
         vcf="../scratch/vcfs/merged.vcf.gz",
-        ref=reference_data["fasta"],
-        mills=reference_data["indel_mills"],
-        axiom=reference_data["axiom"],
-        dbsnp=reference_data["dbsnp"],
+        ref=download(references["fasta"]),
+        mills=download(references["indel_mills"]),
+        axiom=download(references["axiom"]),
+        dbsnp=download(references["dbsnp"]),
+        _ignore=[
+            download(r)
+            for r in [
+                references["axiom_idx"],
+                # references["indel_mills_idx"],
+                references["dbsnp_idx"],
+            ]
+            + references["fasta_idx"]
+        ],
     output:
         vcf=temp("../scratch/recal/indels.recal"),
         tranches=temp("../scratch/recal/indels.tranches"),
@@ -906,7 +950,8 @@ rule apply_indel_recalibration:
         vcf="../scratch/vcfs/recal_snp.vcf",
         recal="../scratch/recal/indels.recal",
         tranches="../scratch/recal/indels.tranches",
-        ref=reference_data["fasta"],
+        ref=download(references["fasta"]),
+        _ignore=[download(r) for r in references["fasta_idx"]],
     output:
         vcf="../output/joint_vcf/final.vcf.gz",
     params:
@@ -930,10 +975,11 @@ rule somalier_extract_joint_vcf:
     https://github.com/brentp/somalier
     """
     input:
-        somalier="../bin/somalier",
-        sites=f"../resources/sites.{config['genome_build']}.vcf.gz",
-        genome=reference_data["fasta"],
+        somalier=download(config["somalier"]["url"]),
+        sites=download(references["somalier_sites"]),
+        genome=download(references["fasta"]),
         vcf="../output/joint_vcf/final.vcf.gz",
+        _ignore=[download(r) for r in references["fasta_idx"]],
     output:
         expand("../scratch/extracted/{sample}.somalier", sample=get_samples()),
     params:
@@ -954,7 +1000,7 @@ rule somalier_relate_samples:
     https://github.com/brentp/somalier
     """
     input:
-        somalier="../bin/somalier",
+        somalier=download(config["somalier"]["url"]),
         somalier_fns=expand(
             "../scratch/extracted/{sample}.somalier", sample=get_samples()
         ),
@@ -1056,35 +1102,3 @@ rule check_relatedness:
         "../logs/check_relatedness.log",
     script:
         "scripts/check_relatedness.py"
-
-
-rule copy_program_to_scratch:
-    """
-    Copy a program from projects storage to scratch for use in the pipeline.
-    """
-    input:
-        "/projects/ps-gleesonlab3/resources/bin/{program}",
-    output:
-        "../bin/{program}",
-    params:
-        output_directory=get_output_directory,
-    resources:
-        walltime=1,
-    shell:
-        "rsync -L {input} {params.output_directory}"
-
-
-rule copy_resource_to_scratch:
-    """
-    Copy a file from projects storage to scratch for use in the pipeline.
-    """
-    input:
-        f"/projects/ps-gleesonlab3/resources/{config['genome_build']}/{{resource}}",
-    output:
-        "../resources/{resource}",
-    params:
-        output_directory=get_output_directory,
-    resources:
-        walltime=1,
-    shell:
-        "rsync -L {input}* {params.output_directory}"
