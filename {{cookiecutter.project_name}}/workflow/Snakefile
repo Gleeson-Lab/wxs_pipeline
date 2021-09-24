@@ -389,7 +389,7 @@ rule verifybamid_read_group:
     log:
         "../logs/verifybamid/{sample}_{rg}.log",
     wrapper:
-        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/verifybamid2/bio/verifybamid/verifybamid2"
+        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/master/bio/verifybamid/verifybamid2"
 
 
 checkpoint check_rgs_contamination:
@@ -608,7 +608,7 @@ rule verifybamid:
     log:
         "../logs/verifybamid/{sample}.log",
     wrapper:
-        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/verifybamid2/bio/verifybamid/verifybamid2"
+        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/master/bio/verifybamid/verifybamid2"
 
 
 checkpoint check_contamination:
@@ -653,7 +653,7 @@ rule mosdepth:
         thresholds=",".join([str(t) for t in config["mosdepth"]["thresholds"]]),
         extra=get_options("mosdepth", ignore=["thresholds"]),
     resources:
-        walltime=partial(increment, base=1, step=3),
+        walltime=partial(increment, base=4, step=8),
     log:
         "../logs/mosdepth/{sample}.log",
     wrapper:
