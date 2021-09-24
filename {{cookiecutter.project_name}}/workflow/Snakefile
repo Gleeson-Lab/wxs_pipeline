@@ -163,12 +163,14 @@ def aggregate_read_groups_markduplicates(wildcards):
     """
     Returns a list of all BAMs for the given sample, one per read group.
     """
-    # we do not use the output from checking somalier not verifybamid but poll
-    # the checkpoint for these rules to enforce snakemake running these steps
-    # and verifying that they ran properly
-    checkpoints.check_rgs_contamination.get(**wildcards)
-    checkpoints.check_read_group_relatedness.get(**wildcards)
     read_groups = aggregate_read_groups(sample=wildcards["sample"])
+    if len(read_groups) > 1:
+        # we do not use the output from checking somalier not verifybamid but poll
+        # the checkpoint for these rules to enforce snakemake running these steps
+        # and verifying that they ran properly
+        # also these steps are unnecessary if there is only one read group
+        checkpoints.check_rgs_contamination.get(**wildcards)
+        checkpoints.check_read_group_relatedness.get(**wildcards)
     return expand(
         f"../scratch/{wildcards['sample']}/{wildcards['sample']}_{{rg}}.bam",
         rg=read_groups,
