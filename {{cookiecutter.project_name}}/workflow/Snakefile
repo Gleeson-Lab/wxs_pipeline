@@ -1065,7 +1065,7 @@ rule copy_program_to_scratch:
     Copy a program from projects storage to scratch for use in the pipeline.
     """
     input:
-        "/projects/ps-gleesonlab3/resources/bin/{program}",
+        f"{config['resources_repository']}/bin/{{program}}",
     output:
         "../bin/{program}",
     params:
@@ -1081,7 +1081,7 @@ rule copy_resource_to_scratch:
     Copy a file from projects storage to scratch for use in the pipeline.
     """
     input:
-        f"/projects/ps-gleesonlab3/resources/{config['genome_build']}/{{resource}}",
+        f"{config['resources_repository']}/{genome_build}/{{resource}}",
     output:
         "../resources/{resource}",
     params:

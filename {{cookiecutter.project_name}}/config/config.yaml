@@ -49,6 +49,7 @@ sex_check_threshold: 0.6 # above is considered female, below male
 create_interval_files: # stores MB to use for interval files
   exome: 100
   genome: 30
+resources_repository: {{cookiecutter.resources_repository}}
 
 #reference files - don't change unless you have a good reason to do so, change genome_build variable instead
 reference:
