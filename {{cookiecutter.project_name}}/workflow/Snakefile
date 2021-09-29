@@ -586,7 +586,7 @@ rule apply_base_recalibration:
     https://gatk.broadinstitute.org/hc/en-us/articles/360037225212-ApplyBQSR
     """
     input:
-        bam="../scratch/{sample}/{sample}_markdup.bam",
+        bam=get_merged_bam,
         dict=reference_data["fasta_dict"],
         recal_table="../output/recal_tables/{sample}_recal.table",
         ref=reference_data["fasta"],
