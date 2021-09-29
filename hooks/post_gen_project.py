@@ -8,7 +8,7 @@ if sequencing_type == "genome":
     dp_string = ", DP"
     snp_gaussians = ""
     indel_gaussians = "4"
-elif sequencing_type == "exome":
+elif sequencing_type in ("exome", "amplicon"):
     dp_string = ""
     snp_gaussians = "max-gaussians: 2 "
     indel_gaussians = "2"

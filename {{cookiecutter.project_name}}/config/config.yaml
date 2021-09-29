@@ -47,6 +47,7 @@ intra_family_cryptic_relatedness_threshold: 0.3 # flag any pair of samples from 
 first_degree_relatedness: {min: 0.4, max: 0.6}
 sex_check_threshold: 0.6 # above is considered female, below male
 create_interval_files: # stores MB to use for interval files
+  amplicon: 4000 # use the entire genome
   exome: 100
   genome: 30
 resources_repository: {{cookiecutter.resources_repository}}
@@ -63,6 +64,8 @@ reference:
     indel_known: ../resources/Homo_sapiens_assembly38.known_indels.vcf.gz
     omni: ../resources/1000G_omni2.5.hg38.vcf.gz
     onekg: ../resources/1000G_phase1.snps.high_confidence.hg38.vcf.gz
+    amplicon:
+      bed: ../resources/CCDS.hg38.bed
     exome:
       bed: ../resources/CCDS.hg38.bed
     genome:
@@ -77,6 +80,8 @@ reference:
     indel_known: ../resources/1000G_phase1.indels.b37.vcf
     omni: ../resources/1000G_omni2.5.b37.sites.vcf
     onekg: ../resources/1000G_phase1.snps.high_confidence.b37.sites.vcf
+    amplicon:
+      bed: ../resources/CCDS.grch37.bed
     exome:
       bed: ../resources/CCDS.grch37.bed
     genome:
