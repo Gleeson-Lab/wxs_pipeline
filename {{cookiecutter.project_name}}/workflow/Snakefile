@@ -8,6 +8,7 @@ localrules:
     check_rgs_contamination,
     check_contamination,
     check_read_group_relatedness,
+    copy_resource_to_scratch,
     copy_program_to_scratch,
     somalier_relate_samples,
     create_interval_files,
@@ -33,6 +34,9 @@ wildcard_constraints:
     sample=sample_regex,
     rg="\d+",  # samtools labels as integers starting from 0
     group="\d+",  # the genome interval subsets to restrict variant calling to so as to achieve parallelization
+
+
+banned_sample_names = ("joint", "genomics_db")
 
 
 @lru_cache
@@ -65,6 +69,14 @@ def get_samples():
             f"match the expected format: {samples_not_matching_regex}."
         )
     if samples:
+        banned_sample_errors = []
+        for banned_sample_name in banned_sample_names:
+            if banned_sample_name in samples:
+                banned_sample_errors.append(
+                    f"Invalid sample name: {banned_sample_name}."
+                )
+        if banned_sample_errors:
+            raise ValueError("\n".join(banned_sample_errors))
         return sorted(samples)
     else:
         raise ValueError("Didn't find any samples in ../input.")
@@ -72,7 +84,7 @@ def get_samples():
 
 all_list = [
     "../output/qc/somalier/samples_with_predicted_sex.ped",
-    expand("../output/gvcfs/{sample}.g.vcf.gz", sample=get_samples()),
+    expand("../output/vcfs/{sample}.vcf.gz", sample=get_samples()),
     expand("../output/qc/mosdepth/{sample}.mosdepth.summary.txt", sample=get_samples()),
     expand("../output/qc/collectinsertsizemetrics/{sample}.txt", sample=get_samples()),
 ]
@@ -262,8 +274,6 @@ checkpoint split_bam:
         walltime=partial(increment, base=8, step=8),
     log:
         "../logs/split_bam/{sample}.log",
-    group:
-        "bam_to_fastq"
     conda:
         "envs/samtools.yaml"
     shell:
@@ -285,8 +295,6 @@ rule extract_fastq_from_bam:
         walltime=partial(increment, base=8, step=8),
     log:
         "../logs/extract_fastqs/{sample}_{rg}.log",
-    group:
-        "bam_to_fastq"
     conda:
         "envs/samtools.yaml"
     shell:
@@ -465,11 +473,12 @@ rule somalier_relate_read_groups:
         input_paths=lambda wildcards, input: [
             os.path.abspath(input_path) for input_path in input["somalier_fns"]
         ],
+        somalier_path=lambda wildcards, input: os.path.abspath(input["somalier"]),
         output_directory=get_output_directory,
     resources:
         walltime=0,
     shell:
-        "cd {params.output_directory} && {input.somalier} relate {params.input_paths}"
+        "cd {params.output_directory} && {params.somalier_path} relate {params.input_paths}"
 
 
 checkpoint check_read_group_relatedness:
@@ -692,7 +701,7 @@ rule haplotype_caller:
         ref=reference_data["fasta"],
         interval_file="../resources/intervals/intervalfile_{group}.list",
     output:
-        gvcf="../scratch/{sample}/gvcfs/{sample}_{group}.g.vcf.gz",
+        gvcf=temp("../scratch/{sample}/gvcfs/{sample}_{group}.g.vcf.gz"),
     params:
         java_opts=get_java_temp_directory,
         extra=lambda wildcards, input: get_options(
@@ -746,7 +755,7 @@ rule genomics_db_import:
             sample=get_samples(),
         ),
     output:
-        db=directory("../scratch/genomics_db_{group}"),
+        db=directory("../scratch/genomics_db/{group}"),
     params:
         java_opts=get_java_temp_directory,
         extra="--tmp-dir $TMPDIR",
@@ -761,18 +770,42 @@ rule genomics_db_import:
         "0.78.0/bio/gatk/genomicsdbimport"
 
 
-rule genotype_gvcfs:
+rule sample_genotype:
+    """
+    Perform the variant calling on the sample's gVCF.
+    https://gatk.broadinstitute.org/hc/en-us/articles/360037594731-GenotypeGVCFs
+    """
+    input:
+        gvcf="../output/gvcfs/{sample}.g.vcf.gz",
+        ref=reference_data["fasta"],
+        known=reference_data["dbsnp"],
+    output:
+        vcf=temp("../scratch/{sample}/{sample}.vcf.gz"),
+    params:
+        java_opts=get_java_temp_directory,
+        extra=get_options("genotype_gvcfs"),
+    resources:
+        walltime=partial(increment, base=8, step=8),
+    log:
+        "../logs/genotype_gvcfs/{sample}.log",
+    group:
+        "genotype"
+    wrapper:
+        "0.78.0/bio/gatk/genotypegvcfs"
+
+
+rule joint_genotype:
     """
     Perform the actual joint calling on the created GenomicsDB data store.
     https://gatk.broadinstitute.org/hc/en-us/articles/360037594731-GenotypeGVCFs
     """
     input:
-        genomicsdb="../scratch/genomics_db_{group}",
+        genomicsdb="../scratch/genomics_db/{group}",
         ref=reference_data["fasta"],
         interval_file="../resources/intervals/intervalfile_{group}.list",
         known=reference_data["dbsnp"],
     output:
-        vcf=temp("../scratch/vcfs/{group}.vcf"),
+        vcf=temp("../scratch/joint/{group}.vcf"),
     params:
         java_opts=get_java_temp_directory,
         extra=get_options("genotype_gvcfs"),
@@ -796,10 +829,10 @@ rule merge_vcfs:
     """
     input:
         vcfs=lambda wildcards: expand(
-            "../scratch/vcfs/{group}.vcf", group=get_intervals()
+            "../scratch/joint/{group}.vcf", group=get_intervals()
         ),
     output:
-        temp("../scratch/vcfs/merged.vcf.gz"),
+        temp("../scratch/joint/joint.vcf.gz"),
     params:
         java_opts=get_java_temp_directory,
     resources:
@@ -807,7 +840,7 @@ rule merge_vcfs:
         mail="ae",
         walltime=partial(increment, base=1, step=3),
     log:
-        "../logs/merge_vcfs/merged_for_vqsr.log",
+        "../logs/merge_vcfs/joint_for_vqsr.log",
     wrapper:
         "0.78.0/bio/picard/mergevcfs"
 
@@ -819,15 +852,15 @@ rule snp_recalibration:
     https://gatk.broadinstitute.org/hc/en-us/articles/360037594511-VariantRecalibrator
     """
     input:
-        vcf="../scratch/vcfs/merged.vcf.gz",
+        vcf="../scratch/{sample}/{sample}.vcf.gz",
         ref=reference_data["fasta"],
         hapmap=reference_data["hapmap"],
         omni=reference_data["omni"],
         onekg=reference_data["onekg"],
         dbsnp=reference_data["dbsnp"],
     output:
-        vcf=temp("../scratch/recal/snps.recal"),
-        tranches=temp("../scratch/recal/snps.tranches"),
+        vcf=temp("../scratch/{sample}/{sample}.snps.recal"),
+        tranches=temp("../scratch/{sample}/{sample}.snps.tranches"),
     params:
         mode="SNP",
         java_opts=get_java_temp_directory,
@@ -837,7 +870,7 @@ rule snp_recalibration:
     resources:
         walltime=partial(increment, base=8, step=8),
     log:
-        "../logs/snp_recalibration/log",
+        "../logs/snp_recalibration/{sample}.log",
     wrapper:
         "0.78.0/bio/gatk/variantrecalibrator"
 
@@ -849,12 +882,12 @@ rule apply_snp_recalibration:
     https://gatk.broadinstitute.org/hc/en-us/articles/360037226332-ApplyVQSR
     """
     input:
-        vcf="../scratch/vcfs/merged.vcf.gz",
-        recal="../scratch/recal/snps.recal",
-        tranches="../scratch/recal/snps.tranches",
+        vcf="../scratch/{sample}/{sample}.vcf.gz",
+        recal="../scratch/{sample}/{sample}.snps.recal",
+        tranches="../scratch/{sample}/{sample}.snps.tranches",
         ref=reference_data["fasta"],
     output:
-        vcf=temp("../scratch/vcfs/recal_snp.vcf"),
+        vcf=temp("../scratch/{sample}/{sample}.recal_snp.vcf"),
     params:
         java_opts=get_java_temp_directory,
         mode="SNP",
@@ -862,9 +895,7 @@ rule apply_snp_recalibration:
     resources:
         walltime=partial(increment, base=8, step=8),
     log:
-        "../logs/apply_snp_recalibration/log",
-    group:
-        "apply_vqsr"
+        "../logs/apply_snp_recalibration/{sample}.log",
     wrapper:
         "0.78.0/bio/gatk/applyvqsr"
 
@@ -876,14 +907,14 @@ rule indel_recalibration:
     https://gatk.broadinstitute.org/hc/en-us/articles/360037594511-VariantRecalibrator
     """
     input:
-        vcf="../scratch/vcfs/merged.vcf.gz",
+        vcf="../scratch/{sample}/{sample}.vcf.gz",
         ref=reference_data["fasta"],
         mills=reference_data["indel_mills"],
         axiom=reference_data["axiom"],
         dbsnp=reference_data["dbsnp"],
     output:
-        vcf=temp("../scratch/recal/indels.recal"),
-        tranches=temp("../scratch/recal/indels.tranches"),
+        vcf=temp("../scratch/{sample}/{sample}.indels.recal"),
+        tranches=temp("../scratch/{sample}/{sample}.indels.tranches"),
     params:
         mode="INDEL",
         java_opts=get_java_temp_directory,
@@ -893,7 +924,7 @@ rule indel_recalibration:
     resources:
         walltime=partial(increment, base=8, step=8),
     log:
-        "../logs/indel_recalibration/log",
+        "../logs/indel_recalibration/{sample}.log",
     wrapper:
         "0.78.0/bio/gatk/variantrecalibrator"
 
@@ -905,12 +936,12 @@ rule apply_indel_recalibration:
     https://gatk.broadinstitute.org/hc/en-us/articles/360037226332-ApplyVQSR
     """
     input:
-        vcf="../scratch/vcfs/recal_snp.vcf",
-        recal="../scratch/recal/indels.recal",
-        tranches="../scratch/recal/indels.tranches",
+        vcf="../scratch/{sample}/{sample}.recal_snp.vcf",
+        recal="../scratch/{sample}/{sample}.indels.recal",
+        tranches="../scratch/{sample}/{sample}.indels.tranches",
         ref=reference_data["fasta"],
     output:
-        vcf="../output/joint_vcf/final.vcf.gz",
+        vcf="../output/vcfs/{sample}.vcf.gz",
     params:
         omava_opts=get_java_temp_directory,
         mode="INDEL",
@@ -918,9 +949,7 @@ rule apply_indel_recalibration:
     resources:
         walltime=partial(increment, base=8, step=8),
     log:
-        "../logs/apply_indel_recalibration/log",
-    group:
-        "apply_vqsr"
+        "../logs/apply_indel_recalibration/{sample}.log",
     wrapper:
         "0.78.0/bio/gatk/applyvqsr"
 
@@ -935,7 +964,7 @@ rule somalier_extract_joint_vcf:
         somalier="../bin/somalier",
         sites=f"../resources/sites.{config['genome_build']}.vcf.gz",
         genome=reference_data["fasta"],
-        vcf="../output/joint_vcf/final.vcf.gz",
+        vcf="../output/vcfs/joint.vcf.gz",
     output:
         expand("../scratch/extracted/{sample}.somalier", sample=get_samples()),
     params:
@@ -970,13 +999,14 @@ rule somalier_relate_samples:
             os.path.abspath(input_path) for input_path in input["somalier_fns"]
         ],
         output_directory=get_output_directory,
+        somalier_path=lambda wildcards, input: os.path.abspath(input["somalier"]),
         ped=lambda wildcards: (
             f"--ped {os.path.abspath(PED_FILE)}" if os.path.isfile(PED_FILE) else ""
         ),
     resources:
         walltime=0,
     shell:
-        "cd {params.output_directory} && {input.somalier} relate {params.ped} {params.input_paths}"
+        "cd {params.output_directory} && {params.somalier_path} relate {params.ped} {params.input_paths}"
 
 
 rule predict_sex:
@@ -1072,8 +1102,10 @@ rule copy_program_to_scratch:
         output_directory=get_output_directory,
     resources:
         walltime=1,
+        rsync=1,
     shell:
-        "rsync -L {input} {params.output_directory}"
+        "ssh tscc-dm1 rsync -L {input} $(realpath {params.output_directory}) "
+        "2>&1 | grep -v '^Warning:' || true"
 
 
 rule copy_resource_to_scratch:
@@ -1088,5 +1120,7 @@ rule copy_resource_to_scratch:
         output_directory=get_output_directory,
     resources:
         walltime=1,
+        rsync=1,
     shell:
-        "rsync -L {input}* {params.output_directory}"
+        "ssh tscc-dm1 rsync -L {input}* $(realpath {params.output_directory}) "
+        "2>&1 | grep -v '^Warning:' || true"
