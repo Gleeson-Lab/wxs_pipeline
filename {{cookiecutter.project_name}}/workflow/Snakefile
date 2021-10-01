@@ -72,11 +72,18 @@ def get_samples():
 
 
 all_list = [
-    "../output/qc/somalier/samples_with_predicted_sex.ped",
     expand("../output/gvcfs/{sample}.g.vcf.gz", sample=get_samples()),
     expand("../output/qc/mosdepth/{sample}.mosdepth.summary.txt", sample=get_samples()),
     expand("../output/qc/collectinsertsizemetrics/{sample}.txt", sample=get_samples()),
 ]
+
+# if amplicon sequencing there isn't sufficient information to check
+# relatedness/sex
+if sequencing_type == "amplicon":
+    all_list.append("../output/joint_vcf/final.vcf.gz")
+else:
+    # the joint VCF is a dependency of this
+    all_list.append("../output/qc/somalier/samples_with_predicted_sex.ped")
 
 
 # if PED file is included, check relatedness also
@@ -875,7 +882,7 @@ rule snp_recalibration:
     log:
         "../logs/snp_recalibration/log",
     wrapper:
-        "0.78.0/bio/gatk/variantrecalibrator"
+        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/variant_recalibrator_fix/bio/gatk/variantrecalibrator"
 
 
 rule apply_snp_recalibration:
@@ -931,7 +938,7 @@ rule indel_recalibration:
     log:
         "../logs/indel_recalibration/log",
     wrapper:
-        "0.78.0/bio/gatk/variantrecalibrator"
+        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/variant_recalibrator_fix/bio/gatk/variantrecalibrator"
 
 
 rule apply_indel_recalibration:
@@ -1006,13 +1013,14 @@ rule somalier_relate_samples:
             os.path.abspath(input_path) for input_path in input["somalier_fns"]
         ],
         output_directory=get_output_directory,
+        somalier_path=lambda wildcards, input: os.path.abspath(input["somalier"]),
         ped=lambda wildcards: (
             f"--ped {os.path.abspath(PED_FILE)}" if os.path.isfile(PED_FILE) else ""
         ),
     resources:
         walltime=0,
     shell:
-        "cd {params.output_directory} && {input.somalier} relate {params.ped} {params.input_paths}"
+        "cd {params.output_directory} && {params.somalier_path} relate {params.ped} {params.input_paths}"
 
 
 rule predict_sex:
