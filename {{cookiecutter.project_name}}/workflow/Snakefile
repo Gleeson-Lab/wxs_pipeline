@@ -26,7 +26,7 @@ from utilities import get_options
 genome_build = config["genome_build"]
 sequencing_type = config["sequencing_type"]
 reference_data = config["reference"][genome_build]
-sample_regex = "[a-zA-Z\d_-]+"  # sample identifiers must match this
+sample_regex = config["sample_regex"]
 get_options = partial(get_options, config=config)
 
 

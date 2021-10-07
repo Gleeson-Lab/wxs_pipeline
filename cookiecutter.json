@@ -10,5 +10,5 @@
 	"resources": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/resources",
 	"scratch": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/scratch",
 	"resources_repository": "/projects/ps-gleesonlab3/resources",
-	"_copy_without_render": ["workflow/Snakefile"]
+	"_copy_without_render": ["workflow/Snakefile", "scripts/setup_inputs.py"]
 }

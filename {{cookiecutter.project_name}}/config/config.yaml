@@ -1,6 +1,7 @@
 genome_build: {{cookiecutter.genome_build}}
 sequencing_type: {{cookiecutter.sequencing_type}}
 email: {{cookiecutter.email}}
+sample_regex: '[a-zA-Z\d_-]+' # same identifiers must match this
 
 # program parameters
 bwa:
