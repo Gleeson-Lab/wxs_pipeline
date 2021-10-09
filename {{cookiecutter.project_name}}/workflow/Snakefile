@@ -793,7 +793,7 @@ rule sample_genotype:
     group:
         "genotype"
     wrapper:
-        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/variant_recalibrator_fix/bio/gatk/variantrecalibrator"
+        "0.78.0/bio/gatk/haplotypecaller"
 
 
 rule joint_genotype:
@@ -818,7 +818,7 @@ rule joint_genotype:
     group:
         "genotype"
     wrapper:
-        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/variant_recalibrator_fix/bio/gatk/variantrecalibrator"
+        "0.78.0/bio/gatk/haplotypecaller"
 
 
 rule merge_vcfs:
@@ -874,7 +874,7 @@ rule snp_recalibration:
     log:
         "../logs/snp_recalibration/{sample}.log",
     wrapper:
-        "0.78.0/bio/gatk/variantrecalibrator"
+        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/variant_recalibrator_fix/bio/gatk/variantrecalibrator"
 
 
 rule apply_snp_recalibration:
@@ -928,7 +928,7 @@ rule indel_recalibration:
     log:
         "../logs/indel_recalibration/{sample}.log",
     wrapper:
-        "0.78.0/bio/gatk/variantrecalibrator"
+        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/variant_recalibrator_fix/bio/gatk/variantrecalibrator"
 
 
 rule apply_indel_recalibration:
