@@ -783,7 +783,9 @@ rule sample_genotype:
         vcf=temp("../scratch/{sample}/{sample}.vcf.gz"),
     params:
         java_opts=get_java_temp_directory,
-        extra=get_options("genotype_gvcfs"),
+        extra=get_options(
+            "genotype_gvcfs", ignore=["only-output-calls-starting-in-intervals"]
+        ),
     resources:
         walltime=partial(increment, base=8, step=8),
     log:
