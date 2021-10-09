@@ -793,7 +793,7 @@ rule sample_genotype:
     group:
         "genotype"
     wrapper:
-        "0.78.0/bio/gatk/genotypegvcfs"
+        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/variant_recalibrator_fix/bio/gatk/variantrecalibrator"
 
 
 rule joint_genotype:
@@ -818,7 +818,7 @@ rule joint_genotype:
     group:
         "genotype"
     wrapper:
-        "0.78.0/bio/gatk/genotypegvcfs"
+        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/variant_recalibrator_fix/bio/gatk/variantrecalibrator"
 
 
 rule merge_vcfs:
