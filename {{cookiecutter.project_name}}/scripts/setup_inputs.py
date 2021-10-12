@@ -34,6 +34,9 @@ from collections import defaultdict, namedtuple
 from glob import glob
 from yaml import safe_load
 
+sys.path.append("../workflow/scripts")
+import ped
+
 BAM_LISTING_FIELDS = ["sample", "bam"]
 FASTQ_LISTING_FIELDS = [
     "sample",
@@ -52,7 +55,7 @@ class CustomFormatter(
     pass
 
 
-def setup_inputs(bam_listing_fh, fastq_listing_fh):
+def setup_inputs(bam_listing_fh, fastq_listing_fh, ped_fh):
     try:
         bam_listing_fields = next(bam_listing_fh).strip().split(",")
     except StopIteration:
@@ -166,9 +169,19 @@ def setup_inputs(bam_listing_fh, fastq_listing_fh):
             "The following input files are missing:\n"
             "{}".format("\n".join(missing_input_files))
         )
-    print(
-        f"Found {len(all_samples)} samples and no errors detected.  Creating symlinks now."
-    )
+    print(f"Found {len(all_samples)} samples and no errors detected.")
+    if ped_fh:
+        print(f"Checking PED: {ped_fh.name}.")
+        p = ped.Pedigree(ped_fh)  # automatically checks validity of PED
+        samples_missing_from_ped = all_samples - p.get_all_sample_ids()
+        if samples_missing_from_ped:
+            raise ValueError(
+                "The following samples were missing from the PED "
+                "file: {}\n".format("\n".join(sorted(samples_missing_from_ped)))
+            )
+        with open("../input/samples.ped", "w") as ped_out:
+            ped_out.write(str(p))
+
     symlinks_created = []
     rg_lines_created = []
     try:
@@ -220,5 +233,11 @@ if __name__ == "__main__":
         type=argparse.FileType("r"),
         help="the FASTQ input listing",
     )
+    parser.add_argument(
+        "-p",
+        "--ped",
+        type=argparse.FileType("r"),
+        help="optional PED file for the project",
+    )
     args = parser.parse_args()
-    setup_inputs(args.bam_listing, args.fastq_listing)
+    setup_inputs(args.bam_listing, args.fastq_listing, args.ped)

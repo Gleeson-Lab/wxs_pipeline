@@ -42,6 +42,12 @@ class Pedigree:
             nsamples += len(family.get_sample_ids())
         return nsamples
 
+    def get_all_sample_ids(self):
+        sample_ids = set()
+        for family in self.families.values():
+            sample_ids |= family.get_sample_ids()
+        return sample_ids
+
     def get_num_families(self):
         return len(self.families)
 
@@ -74,6 +80,9 @@ class Pedigree:
                 )
             samples_so_far |= family_samples
 
+    def __str__(self):
+        return "\n".join((str(family) for family in self.families.values()))
+
 
 class Family:
     def __init__(self, family_id):
@@ -86,7 +95,7 @@ class Family:
                 f"{sample_id} is already present in family {self.family_id}."
             )
         self.samples[sample_id] = Sample(
-            sample_id, father_id, mother_id, sex, phenotype
+            self.family_id, sample_id, father_id, mother_id, sex, phenotype
         )
 
     def get_sample_ids(self):
@@ -161,9 +170,13 @@ class Family:
                         "which is not present."
                     )
 
+    def __str__(self):
+        return "\n".join((str(sample) for sample in self.samples.values()))
+
 
 @dataclass
 class Sample:
+    family_id: str
     sample_id: str
     father_id: str
     mother_id: str
@@ -178,3 +191,15 @@ class Sample:
 
         self.sex = Sex(int(self.sex))
         self.phenotype = Phenotype(int(self.phenotype))
+
+    def __str__(self):
+        return "\t".join(
+            (
+                self.family_id,
+                self.sample_id,
+                self.father_id if self.father_id else "0",
+                self.mother_id if self.mother_id else "0",
+                str(self.sex.value),
+                str(self.phenotype.value),
+            )
+        )
