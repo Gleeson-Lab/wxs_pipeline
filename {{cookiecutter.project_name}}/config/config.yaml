@@ -20,7 +20,9 @@ snp_recalibration:
     omni: {known: False, training: True, truth: False, prior: 12.0}
     onekg: {known: False, training: True, truth: False, prior: 10.0}
     dbsnp: {known: True, training: False, truth: False, prior: 2.0}
-  annotation: [QD, MQ, MQRankSum, ReadPosRankSum, FS, SOR, InbreedingCoeff$((DP))] # N.B. you should use DP with WGS and should NOT use DP with WES
+  annotation:
+    joint: [QD, MQ, MQRankSum, ReadPosRankSum, FS, SOR, InbreedingCoeff$((DP))] # N.B. you should use DP with WGS and should NOT use DP with WES
+    single: [QD, MQ, MQRankSum, ReadPosRankSum, FS, SOR$((DP))] # InbreedingCoeff isn't used for single samplees
 apply_snp_recalibration:
   use-allele-specific-annotations: ""
   truth-sensitivity-filter-level: 99.7
@@ -32,7 +34,9 @@ indel_recalibration:
     mills: {known: False, training: True, truth: True, prior: 12.0}
     axiom: {known: False, training: True, truth: False, prior: 10.0}
     dbsnp: {known: True, training: False, truth: False, prior: 2.0}
-  annotation: [QD, FS, SOR, ReadPosRankSum, MQRankSum, InbreedingCoeff$((DP))] # N.B. you should use DP with WGS and should NOT use DP with WES
+  annotation:
+    joint: [QD, FS, SOR, ReadPosRankSum, MQRankSum, InbreedingCoeff$((DP))] # N.B. you should use DP with WGS and should NOT use DP with WES
+    single: [QD, FS, SOR, ReadPosRankSum, MQRankSum$((DP))] # InbreedingCoeff isn't used for single samples
 apply_indel_recalibration:
   use-allele-specific-annotations: ""
   truth-sensitivity-filter-level: 99.0
@@ -45,7 +49,7 @@ min_relatedness: {{cookiecutter.min_identity_relatedness}} # minimum tolerable r
 cryptic_relatedness_threshold: 0.2 # flag any pair of samples labeled as coming from different families with greater than this relatedness
 intra_family_cryptic_relatedness_threshold: 0.3 # flag any pair of samples from the same family but not documented as being siblings nor parent-child
 first_degree_relatedness: {min: 0.4, max: 0.6}
-sex_check_threshold: 0.6 # above is considered female, below male
+sex_check_threshold: 0.6 # X chromosome het/hom ratio: above is considered female, below male
 create_interval_files: # stores MB to use for interval files
   exome: 100
   genome: 30

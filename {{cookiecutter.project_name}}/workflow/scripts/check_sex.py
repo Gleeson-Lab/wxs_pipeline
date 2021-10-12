@@ -17,16 +17,39 @@ try:
     declared_sex_by_sample = {}
     with open(snakemake.input["original_ped"]) as ped_fh:
         for line in ped_fh:
-            _, individual_id, _, _, sex, _ = line.strip().split("\t")
+            try:
+                _, individual_id, _, _, sex, _ = line.strip().split("\t")
+            except:
+                print(
+                    f"Unexpected file format for {ped_fh.name}.  "
+                    "Make sure it has 6 tab-separated columns."
+                )
+                raise
+            if sex not in ("0", "1", "2"):
+                raise ValueError(f"Unknown sex in {ped_fh.name}: {sex}.")
             declared_sex_by_sample[individual_id] = sex
     sex_mismatches = []
+    unknown_sex_samples = []
     with open(snakemake.input["predicted_ped"]) as ped_fh:
         for line in ped_fh:
             _, individual_id, _, _, sex, _ = line.strip().split("\t")
             if declared_sex_by_sample[individual_id] != sex:
-                sex_mismatches.append(
-                    (individual_id, declared_sex_by_sample[individual_id], sex)
-                )
+                if declared_sex_by_sample[individual_id] == "0":
+                    # declared sex is unknown
+                    unknown_sex_samples.append((individual_id, sex))
+                else:
+                    sex_mismatches.append(
+                        (individual_id, declared_sex_by_sample[individual_id], sex)
+                    )
+    if unknown_sex_samples:
+        messages = [
+            "The following samples were reported as unknown sex and had "
+            "the following predictions:"
+        ]
+        for individual_id, predicted_sex in unknown_sex_samples:
+            messages.append(f"{individual_id} {predicted_sex=}")
+        message = "\n".join(messages) + "\n"
+        log_fh.write(message)
     if sex_mismatches:
         messages = [
             "The following samples had a mismatch between the "

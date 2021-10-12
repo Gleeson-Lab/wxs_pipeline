@@ -868,7 +868,12 @@ rule snp_recalibration:
         java_opts=get_java_temp_directory,
         extra=get_options("snp_recalibration", ignore=["resources", "annotation"]),
         resources=config["snp_recalibration"]["resources"],
-        annotation=config["snp_recalibration"]["annotation"],
+        # use different annotations if single vs. joint-calling
+        annotation=lambda wildcards: (
+            config["snp_recalibration"]["annotation"]["joint"]
+            if wildcards["sample"] == "joint"
+            else config["snp_recalibration"]["annotation"]["single"]
+        ),
     resources:
         walltime=partial(increment, base=8, step=8),
     log:
@@ -922,7 +927,12 @@ rule indel_recalibration:
         java_opts=get_java_temp_directory,
         extra=get_options("indel_recalibration", ignore=["resources", "annotation"]),
         resources=config["indel_recalibration"]["resources"],
-        annotation=config["indel_recalibration"]["annotation"],
+        # use different annotations if single vs. joint-calling
+        annotation=lambda wildcards: (
+            config["indel_recalibration"]["annotation"]["joint"]
+            if wildcards["sample"] == "joint"
+            else config["indel_recalibration"]["annotation"]["single"]
+        ),
     resources:
         walltime=partial(increment, base=8, step=8),
     log:
@@ -1030,9 +1040,7 @@ rule predict_sex:
             header = samples_fh.readline().strip().split("\t")
             for line in samples_fh:
                 d = dict(zip(header, line.strip().split("\t")))
-                het_hom_ratio = int(d["X_het"]) / (
-                    int(d["X_hom_ref"]) + int(d["X_hom_alt"])
-                )
+                het_hom_ratio = int(d["X_het"]) / (int(d["X_hom_ref"]))
                 if het_hom_ratio < params.sex_check_threshold:
                     d["predicted_sex"] = 1
                 else:
