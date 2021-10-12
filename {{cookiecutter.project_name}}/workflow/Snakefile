@@ -5,7 +5,7 @@ localrules:
     all,
     get_read_groups,
     somalier_relate_read_groups,
-    check_rgs_contamination,
+    check_read_group_contamination,
     check_contamination,
     check_read_group_relatedness,
     copy_resource_to_scratch,
@@ -25,8 +25,9 @@ from utilities import get_options
 
 
 genome_build = config["genome_build"]
+sequencing_type = config["sequencing_type"]
 reference_data = config["reference"][genome_build]
-sample_regex = "[a-zA-Z\d_-]+"  # sample identifiers must match this
+sample_regex = config["sample_regex"]
 get_options = partial(get_options, config=config)
 
 
@@ -88,6 +89,14 @@ all_list = [
     expand("../output/qc/mosdepth/{sample}.mosdepth.summary.txt", sample=get_samples()),
     expand("../output/qc/collectinsertsizemetrics/{sample}.txt", sample=get_samples()),
 ]
+
+# if amplicon sequencing there isn't sufficient information to check
+# relatedness/sex
+if sequencing_type == "amplicon":
+    all_list.append("../output/joint_vcf/final.vcf.gz")
+else:
+    # the joint VCF is a dependency of this
+    all_list.append("../output/qc/somalier/samples_with_predicted_sex.ped")
 
 
 # if PED file is included, check relatedness also
@@ -171,7 +180,7 @@ def get_java_temp_directory(wildcards):
         return ""
 
 
-def aggregate_read_groups_markduplicates(wildcards):
+def aggregate_read_group_bams(wildcards):
     """
     Returns a list of all BAMs for the given sample, one per read group.
     """
@@ -181,7 +190,7 @@ def aggregate_read_groups_markduplicates(wildcards):
         # the checkpoint for these rules to enforce snakemake running these steps
         # and verifying that they ran properly
         # also these steps are unnecessary if there is only one read group
-        checkpoints.check_rgs_contamination.get(**wildcards)
+        checkpoints.check_read_group_contamination.get(**wildcards)
         checkpoints.check_read_group_relatedness.get(**wildcards)
     return expand(
         f"../scratch/{wildcards['sample']}/{wildcards['sample']}_{{rg}}.bam",
@@ -217,12 +226,29 @@ def aggregate_read_groups(sample):
         )
 
 
+def get_merged_bam(wildcards):
+    """
+    Return the path to the merged BAM to start BQSR.
+    This will either be the BAM resulting from marking PCR duplicates
+    (which implicitly merges), or explicitly merging BAM(s) in case of
+    needing to not perform read duplicate marking (e.g. amplicon sequencing).
+    """
+    sample = wildcards["sample"]
+    if sequencing_type == "amplicon":
+        return f"../scratch/{sample}/{sample}_merged.bam"
+    else:
+        return f"../scratch/{sample}/{sample}_markdup.bam"
+
+
 def get_final_bam(wildcards):
     """
     Returns the path to the final BAM for the sample while enforcing that it is
     insufficiently contaminated to continue.
+    N.B. We do not run the checking contamination step for amplicon sequencing.
+    There are insufficient informative SNPs for this step to work properly.
     """
-    checkpoints.check_contamination.get(**wildcards)
+    if sequencing_type != "amplicon":
+        checkpoints.check_contamination.get(**wildcards)
     return f"../output/bams/{wildcards['sample']}.bam"
 
 
@@ -245,7 +271,7 @@ def get_intervals():
 
 rule get_read_groups:
     """
-    Extract the set of read groups from a BAM's (or CRAM's) header.
+    Extract the set of read groups from a BAM's header.
     The SM attribute is updated to {sample}, but others are unchanged.
     """
     input:
@@ -262,7 +288,7 @@ rule get_read_groups:
 
 checkpoint split_bam:
     """
-    Split a BAM (or CRAM) by read group.
+    Split a BAM by read group.
     http://www.htslib.org/doc/samtools-split.html
     """
     input:
@@ -400,7 +426,7 @@ rule verifybamid_read_group:
         "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/master/bio/verifybamid/verifybamid2"
 
 
-checkpoint check_rgs_contamination:
+checkpoint check_read_group_contamination:
     """
     After running verifybamid2 on each read group BAM, check that the
     contamination from another human is sufficiently low.
@@ -412,15 +438,15 @@ checkpoint check_rgs_contamination:
             rg=aggregate_read_groups(wildcards),
         ),
     output:
-        touch("../scratch/{sample}/check_contamination_rgs.done"),
+        touch("../scratch/{sample}/check_read_group_contamination.done"),
     params:
         max_contamination=config["max_contamination"],
-        failure_file="../scratch/{sample}/check_contamination_rgs.failure",
+        failure_file="../scratch/{sample}/check_read_group_contamination.failure",
         email=config["email"],
     resources:
         walltime=0,
     log:
-        "../logs/check_contamination/{sample}_rgs.log",
+        "../logs/check_contamination/{sample}_read_groups.log",
     script:
         "scripts/check_contamination.py"
 
@@ -490,17 +516,17 @@ checkpoint check_read_group_relatedness:
     input:
         "../output/qc/{sample}/somalier.pairs.tsv",
     output:
-        touch("../scratch/{sample}/check_rg_relatedness.done"),
+        touch("../scratch/{sample}/check_read_group_relatedness.done"),
     params:
         min_relatedness=config["min_relatedness"],
-        failure_file="../scratch/{sample}/check_rg_relatedness.failure",
+        failure_file="../scratch/{sample}/check_read_group_relatedness.failure",
         email=config["email"],
     resources:
         walltime=0,
     log:
-        "../logs/check_rg_relatedness/{sample}.log",
+        "../logs/check_read_group_relatedness/{sample}.log",
     script:
-        "scripts/check_rg_relatedness.py"
+        "scripts/check_read_group_relatedness.py"
 
 
 rule mark_duplicates:
@@ -511,7 +537,7 @@ rule mark_duplicates:
         https://gatk.broadinstitute.org/hc/en-us/articles/360037052812-MarkDuplicates-Picard-
     """
     input:
-        aggregate_read_groups_markduplicates,
+        aggregate_read_group_bams,
     output:
         bam=temp("../scratch/{sample}/{sample}_markdup.bam"),
         metrics="../output/qc/mark_duplicates/{sample}.txt",
@@ -526,13 +552,31 @@ rule mark_duplicates:
         "0.78.0/bio/picard/markduplicates"
 
 
+rule merge_read_group_bams:
+    """
+    Merge the separate read group BAMs.
+    This is intended to be used when PCR duplicate marking is not supposed to be
+    performed, e.g. for amplicon sequencing.
+    N.B. This tool will work even when there is only one read group.
+    http://www.htslib.org/doc/samtools-merge.html
+    """
+    input:
+        aggregate_read_group_bams,
+    output:
+        bam=temp("../scratch/{sample}/{sample}_merged.bam"),
+    resources:
+        walltime=partial(increment, base=1, step=4),
+    wrapper:
+        "0.78.0/bio/samtools/merge"
+
+
 rule base_recalibration:
     """
     Generate a model for read base quality score recalibration.
     https://gatk.broadinstitute.org/hc/en-us/articles/360037593511-BaseRecalibrator
     """
     input:
-        bam="../scratch/{sample}/{sample}_markdup.bam",
+        bam=get_merged_bam,
         dict=reference_data["fasta_dict"],
         ref=reference_data["fasta"],
         known=[
@@ -559,7 +603,7 @@ rule apply_base_recalibration:
     https://gatk.broadinstitute.org/hc/en-us/articles/360037225212-ApplyBQSR
     """
     input:
-        bam="../scratch/{sample}/{sample}_markdup.bam",
+        bam=get_merged_bam,
         dict=reference_data["fasta_dict"],
         recal_table="../output/recal_tables/{sample}_recal.table",
         ref=reference_data["fasta"],
@@ -649,7 +693,7 @@ rule mosdepth:
     """
     input:
         bam="../output/bams/{sample}.bam",
-        bed=reference_data[config["sequencing_type"]]["bed"],
+        bed=reference_data[sequencing_type]["bed"],
     output:
         multiext(
             "../output/qc/mosdepth/{sample}",
@@ -679,7 +723,7 @@ checkpoint create_interval_files:
     output:
         touch("../scratch/create_interval_files.done"),
     params:
-        megabases=config["create_interval_files"][config["sequencing_type"]],
+        megabases=config["create_interval_files"][sequencing_type],
         use_MT_flag="--use-MT" if genome_build == "grch37" else "",
         no_chr_prefix_flag="--no-chr-prefix" if genome_build == "grch37" else "",
         output_directory="../resources/intervals",

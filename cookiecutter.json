@@ -2,7 +2,7 @@
 	"project_name": "wgs_pipeline",
 	"email": "",
 	"genome_build": ["hg38", "grch37"],
-	"sequencing_type": ["genome", "exome"],
+	"sequencing_type": ["genome", "exome", "amplicon"],
 	"max_intraspecies_contamination": "0.01",
 	"min_identity_relatedness": "0.99",
 	"logs": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/logs",
@@ -10,5 +10,5 @@
 	"resources": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/resources",
 	"scratch": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/scratch",
 	"resources_repository": "/projects/ps-gleesonlab3/resources",
-	"_copy_without_render": ["workflow/Snakefile"]
+	"_copy_without_render": ["workflow/Snakefile", "scripts/setup_inputs.py"]
 }
