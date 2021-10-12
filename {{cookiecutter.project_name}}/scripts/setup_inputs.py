@@ -179,11 +179,13 @@ def setup_inputs(bam_listing_fh, fastq_listing_fh, ped_fh):
                 "The following samples were missing from the PED "
                 "file: {}\n".format("\n".join(sorted(samples_missing_from_ped)))
             )
+        print("No errors detected in PED file.")
         with open("../input/samples.ped", "w") as ped_out:
             ped_out.write(str(p))
 
     symlinks_created = []
     rg_lines_created = []
+    print("Creating symlinks.")
     try:
         for sample, bam in bam_mapping.items():
             link = f"../input/bams/{sample}.bam"
