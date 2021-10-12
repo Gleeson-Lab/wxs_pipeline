@@ -94,6 +94,8 @@ class Family:
             raise ValueError(
                 f"{sample_id} is already present in family {self.family_id}."
             )
+        if not sample_id or sample_id == "0":
+            raise ValueError("Invalid sample id.  Cannot be blank or 0.")
         self.samples[sample_id] = Sample(
             self.family_id, sample_id, father_id, mother_id, sex, phenotype
         )
