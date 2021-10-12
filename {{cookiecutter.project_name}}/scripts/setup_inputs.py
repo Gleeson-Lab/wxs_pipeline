@@ -25,6 +25,10 @@ listing with no records).
 
 The script will check for various errors, e.g. missing files, samples being
 listed in both files, invalid sample names, etc.
+
+Additionally an optional PED file can be passed in.  The script will validate
+the PED, compare it to the samples in the other input files, and place the PED
+file in the input directory for subsequent use in the pipeline.
 """
 import argparse
 import sys
