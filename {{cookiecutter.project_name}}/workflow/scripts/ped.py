@@ -149,24 +149,24 @@ class Family:
                 if sample.father_id in self.samples:
                     if self.samples[sample.father_id].sex != Sex.MALE:
                         raise ValueError(
-                            f"{sample} has father {self.samples[sample.father_id]} "
+                            f"Sample {sample_id} has father {self.samples[sample.father_id]} "
                             "which is not labeled as male."
                         )
                 else:
                     raise ValueError(
-                        f"{sample} has father {sample.father_id} "
+                        f"Sample {sample_id} has father {sample.father_id} "
                         "which is not present."
                     )
             if sample.mother_id:
                 if sample.mother_id in self.samples:
                     if self.samples[sample.mother_id].sex != Sex.FEMALE:
                         raise ValueError(
-                            f"{sample} has mother {self.samples[sample.mother_id]} "
+                            f"Sample {sample_id} has mother {self.samples[sample.mother_id]} "
                             "which is not labeled as female."
                         )
                 else:
                     raise ValueError(
-                        f"{sample} has mother {sample.mother_id} "
+                        f"Sample {sample_id} has mother {sample.mother_id} "
                         "which is not present."
                     )
 
