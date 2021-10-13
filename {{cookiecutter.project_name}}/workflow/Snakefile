@@ -273,6 +273,21 @@ def get_intervals():
     )
 
 
+def get_vqsr_annotations(wildcards, rule_name):
+    """
+    Returns the list of annotations gatk should use to perform VQSR with.
+    This will vary depending on the sequencing type, single-sample or
+    joint-genotyping, and ploidy.
+    """
+    annotations = config[rule_name]["annotation"]
+    for extra_annotation in config["vqsr"]["extra_annotations"][sequencing_type]:
+        annotations.append(extra_annotation)
+    if wildcards["sample_name"] == "joint" and ploidy == 2:
+        for extra_annotation in config["vqsr"]["extra_joint_diploid_annotations"]:
+            annotations.append(extra_annotation)
+    return annotations
+
+
 rule get_read_groups:
     """
     Extract the set of read groups from a BAM's header.
@@ -916,12 +931,7 @@ rule snp_recalibration:
         java_opts=get_java_temp_directory,
         extra=get_options("snp_recalibration", ignore=["resources", "annotation"]),
         resources=config["snp_recalibration"]["resources"],
-        # use different annotations if single vs. joint-calling
-        annotation=lambda wildcards: (
-            config["snp_recalibration"]["annotation"]["joint"]
-            if wildcards["sample"] == "joint"
-            else config["snp_recalibration"]["annotation"]["single"]
-        ),
+        annotation=partial(get_vqsr_annotations, rule_name="snp_recalibration"),
     resources:
         walltime=partial(increment, base=8, step=8),
     log:
@@ -975,12 +985,7 @@ rule indel_recalibration:
         java_opts=get_java_temp_directory,
         extra=get_options("indel_recalibration", ignore=["resources", "annotation"]),
         resources=config["indel_recalibration"]["resources"],
-        # use different annotations if single vs. joint-calling
-        annotation=lambda wildcards: (
-            config["indel_recalibration"]["annotation"]["joint"]
-            if wildcards["sample"] == "joint"
-            else config["indel_recalibration"]["annotation"]["single"]
-        ),
+        annotation=partial(get_vqsr_annotations, rule_name="indel_recalibration"),
     resources:
         walltime=partial(increment, base=8, step=8),
     log:

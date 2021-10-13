@@ -1,31 +1,22 @@
 import os
 import sys
 
-# adds DP to VQSR annotations used for WGS
+# adjusts max gaussians to pass for VQSR
 # https://gatk.broadinstitute.org/hc/en-us/articles/4402736812443-Which-training-sets-arguments-should-I-use-for-running-VQSR-
 sequencing_type = "{{cookiecutter.sequencing_type}}"
 if sequencing_type == "genome":
-    dp_string = ", DP"
-    snp_gaussians = ""
-    indel_gaussians = "4"
+    snp_gaussians = "*max_gaussians_snp_genome"
+    indel_gaussians = "*max_gaussians_indel_genome"
 elif sequencing_type in ("exome", "amplicon"):
-    dp_string = ""
-    snp_gaussians = "max-gaussians: 2 "
-    indel_gaussians = "2"
+    snp_gaussians = "*max_gaussians_snp_other"
+    indel_gaussians = "*max_gaussians_indel_other"
 else:
     print(f"Unrecognized sequencing_type ({sequencing_type}.")
     sys.exit(1)
-ploidy = "{{cookiecutter.ploidy}}"
-if ploidy == "2":
-    inbreeding_coeff_string = ", InbreedingCoeff"
-else:
-    inbreeding_coeff_string = ""
 with open("config/config.yaml") as config_fh:
     config_content = config_fh.read()
-config_content = config_content.replace("$((DP))", dp_string)
 config_content = config_content.replace("$((SNP_GAUSSIANS))", snp_gaussians)
 config_content = config_content.replace("$((INDEL_GAUSSIANS))", indel_gaussians)
-config_content = config_content.replace("$((InbreedingCoeff))", inbreeding_coeff_string)
 with open("config/config.yaml", "w") as config_fh:
     config_fh.write(config_content)
 
