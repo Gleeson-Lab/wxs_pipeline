@@ -351,7 +351,7 @@ rule bwa_align_and_sort_interleaved:
     log:
         "../logs/bwa/{sample}_{rg}.log",
     wrapper:
-        "0.78.0/bio/bwa/mem"
+        "0.79.0/bio/bwa/mem"
 
 
 rule bwa_align_and_sort_paired_end:
@@ -384,7 +384,7 @@ rule bwa_align_and_sort_paired_end:
     log:
         "../logs/bwa/{sample}_{rg}.log",
     wrapper:
-        "0.78.0/bio/bwa/mem"
+        "0.79.0/bio/bwa/mem"
 
 
 rule index_read_group:
@@ -401,7 +401,7 @@ rule index_read_group:
     group:
         "somalier_rg"
     wrapper:
-        "0.78.0/bio/samtools/index"
+        "0.79.0/bio/samtools/index"
 
 
 rule verifybamid_read_group:
@@ -549,7 +549,7 @@ rule mark_duplicates:
     log:
         "../logs/mark_duplicates/{sample}.log",
     wrapper:
-        "0.78.0/bio/picard/markduplicates"
+        "0.79.0/bio/picard/markduplicates"
 
 
 rule merge_read_group_bams:
@@ -567,7 +567,7 @@ rule merge_read_group_bams:
     resources:
         walltime=partial(increment, base=1, step=4),
     wrapper:
-        "0.78.0/bio/samtools/merge"
+        "0.79.0/bio/samtools/merge"
 
 
 rule base_recalibration:
@@ -594,7 +594,7 @@ rule base_recalibration:
     log:
         "../logs/base_recalibration/{sample}.log",
     wrapper:
-        "0.78.0/bio/gatk/baserecalibrator"
+        "0.79.0/bio/gatk/baserecalibrator"
 
 
 rule apply_base_recalibration:
@@ -617,7 +617,7 @@ rule apply_base_recalibration:
     log:
         "../logs/apply_base_recalibration/{sample}.log",
     wrapper:
-        "0.78.0/bio/gatk/applybqsr"
+        "0.79.0/bio/gatk/applybqsr"
 
 
 rule collectinsertsizemetrics:
@@ -639,7 +639,7 @@ rule collectinsertsizemetrics:
     log:
         "../logs/collectinsertsizemetrics/{sample}.bam",
     wrapper:
-        "0.78.0/bio/picard/collectinsertsizemetrics"
+        "0.79.0/bio/picard/collectinsertsizemetrics"
 
 
 rule verifybamid:
@@ -710,7 +710,7 @@ rule mosdepth:
     log:
         "../logs/mosdepth/{sample}.log",
     wrapper:
-        "0.78.0/bio/mosdepth"
+        "0.79.0/bio/mosdepth"
 
 
 checkpoint create_interval_files:
@@ -757,7 +757,7 @@ rule haplotype_caller:
     log:
         "../logs/haplotype_caller/{sample}_{group}.log",
     wrapper:
-        "0.78.0/bio/gatk/haplotypecaller"
+        "0.79.0/bio/gatk/haplotypecaller"
 
 
 rule merge_gvcfs:
@@ -783,7 +783,7 @@ rule merge_gvcfs:
     log:
         "../logs/merge_gvcfs/{sample}.log",
     wrapper:
-        "0.78.0/bio/picard/mergevcfs"
+        "0.79.0/bio/picard/mergevcfs"
 
 
 rule genomics_db_import:
@@ -811,7 +811,7 @@ rule genomics_db_import:
     group:
         "genotype"
     wrapper:
-        "0.78.0/bio/gatk/genomicsdbimport"
+        "0.79.0/bio/gatk/genomicsdbimport"
 
 
 rule sample_genotype:
@@ -837,7 +837,7 @@ rule sample_genotype:
     group:
         "genotype"
     wrapper:
-        "0.78.0/bio/gatk/haplotypecaller"
+        "0.79.0/bio/gatk/haplotypecaller"
 
 
 rule joint_genotype:
@@ -862,7 +862,7 @@ rule joint_genotype:
     group:
         "genotype"
     wrapper:
-        "0.78.0/bio/gatk/haplotypecaller"
+        "0.79.0/bio/gatk/haplotypecaller"
 
 
 rule merge_vcfs:
@@ -888,7 +888,7 @@ rule merge_vcfs:
     log:
         "../logs/merge_vcfs/joint_for_vqsr.log",
     wrapper:
-        "0.78.0/bio/picard/mergevcfs"
+        "0.79.0/bio/picard/mergevcfs"
 
 
 rule snp_recalibration:
@@ -923,7 +923,7 @@ rule snp_recalibration:
     log:
         "../logs/snp_recalibration/{sample}.log",
     wrapper:
-        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/variant_recalibrator_fix/bio/gatk/variantrecalibrator"
+        "0.79.0/bio/gatk/variantrecalibrator"
 
 
 rule apply_snp_recalibration:
@@ -948,7 +948,7 @@ rule apply_snp_recalibration:
     log:
         "../logs/apply_snp_recalibration/{sample}.log",
     wrapper:
-        "0.78.0/bio/gatk/applyvqsr"
+        "0.79.0/bio/gatk/applyvqsr"
 
 
 rule indel_recalibration:
@@ -982,7 +982,7 @@ rule indel_recalibration:
     log:
         "../logs/indel_recalibration/{sample}.log",
     wrapper:
-        "https://raw.githubusercontent.com/brcopeland/snakemake-wrappers/variant_recalibrator_fix/bio/gatk/variantrecalibrator"
+        "0.79.0/bio/gatk/variantrecalibrator"
 
 
 rule apply_indel_recalibration:
@@ -1007,7 +1007,7 @@ rule apply_indel_recalibration:
     log:
         "../logs/apply_indel_recalibration/{sample}.log",
     wrapper:
-        "0.78.0/bio/gatk/applyvqsr"
+        "0.79.0/bio/gatk/applyvqsr"
 
 
 rule somalier_extract_joint_vcf:
