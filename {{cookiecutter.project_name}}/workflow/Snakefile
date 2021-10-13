@@ -21,11 +21,12 @@ import os
 import re
 from functools import lru_cache, partial
 from glob import glob
-from utilities import get_options
+from utils import get_options
 
 
 genome_build = config["genome_build"]
 sequencing_type = config["sequencing_type"]
+ploidy = config["ploidy"]
 reference_data = config["reference"][genome_build]
 sample_regex = config["sample_regex"]
 get_options = partial(get_options, config=config)
@@ -84,32 +85,35 @@ def get_samples():
 
 
 all_list = [
-    "../output/qc/somalier/samples_with_predicted_sex.ped",
     expand("../output/vcfs/{sample}.vcf.gz", sample=get_samples()),
     expand("../output/qc/mosdepth/{sample}.mosdepth.summary.txt", sample=get_samples()),
     expand("../output/qc/collectinsertsizemetrics/{sample}.txt", sample=get_samples()),
 ]
 
-# if amplicon sequencing there isn't sufficient information to check
-# relatedness/sex
-if sequencing_type == "amplicon":
-    all_list.append("../output/joint_vcf/final.vcf.gz")
-else:
-    # the joint VCF is a dependency of this
-    all_list.append("../output/qc/somalier/samples_with_predicted_sex.ped")
 
-
-# if PED file is included, check relatedness also
 PED_FILE = "../input/samples.ped"
-if os.path.isfile(PED_FILE):
-    all_list.append("../scratch/check_relatedness.done")
-    all_list.append("../scratch/check_sex.done")
+# the pipeline currently uses GenomicsDB for joint calling and this does not
+# support non-diploid data; this precludes joint variant calling and downstream
+# QC checks, e.g. relatedness and sex checking
+# https://gatk.broadinstitute.org/hc/en-us/articles/360035889691-Does-GATK-work-on-non-diploid-organisms-
+if ploidy == 2:
+    # if amplicon sequencing there isn't sufficient information to check
+    # relatedness/sex
+    if sequencing_type == "amplicon":
+        all_list.append("../output/vcfs/joint.vcf.gz")
+    else:
+        # the joint VCF is a dependency of this
+        all_list.append("../output/qc/somalier/samples_with_predicted_sex.ped")
+        # if PED file is included, check relatedness also
+        if os.path.isfile(PED_FILE):
+            all_list.append("../scratch/check_relatedness.done")
+            all_list.append("../scratch/check_sex.done")
 
 
 rule all:
     """
     Dummy rule to get:
-    1. joint-called VCF
+    1. joint-called VCF (if ploidy == 2)
     2. single-sample GVCFs
     3. QC information
     """

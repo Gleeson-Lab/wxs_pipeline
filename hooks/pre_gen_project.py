@@ -26,3 +26,12 @@ try:
 except ValueError:
     print(f"min_identity_relatedness ({min_relatedness}) must be in the range [0,1].")
     sys.exit(1)
+
+ploidy = "{{cookiecutter.ploidy}}"
+try:
+    ploidy = int(ploidy)
+    if ploidy < 1:
+        raise ValueError
+except ValueError:
+    print(f"{ploidy=} must be an integer at least 1")
+    sys.exit(1)

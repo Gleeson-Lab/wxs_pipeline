@@ -1,19 +1,21 @@
 genome_build: {{cookiecutter.genome_build}}
 sequencing_type: {{cookiecutter.sequencing_type}}
+ploidy: &ploidy {{cookiecutter.ploidy}}
 email: {{cookiecutter.email}}
 sample_regex: '[a-zA-Z\d_-]+' # same identifiers must match this
 
 # program parameters
 bwa:
   K: 100000000 # suggested for reproducibility
-  Y: "" # soft-clipping of supplementary alignments
+  Y: # soft-clipping of supplementary alignments
 haplotype_caller:
   annotation-group: [StandardAnnotation, AS_StandardAnnotation, StandardHCAnnotation]
+  ploidy: *ploidy
 genotype_gvcfs:
   annotation-group: [StandardAnnotation, AS_StandardAnnotation, StandardHCAnnotation]
-  only-output-calls-starting-in-intervals: ""
+  only-output-calls-starting-in-intervals:
 snp_recalibration:
-  use-allele-specific-annotations: ""
+  use-allele-specific-annotations:
   $((SNP_GAUSSIANS))# N.B. we use 2 max-gaussians for WES and don't specify for WGS
   truth-sensitivity-tranche: [100.0, 99.95, 99.9, 99.8, 99.6, 99.5, 99.4, 99.3, 99.0, 98.0, 97.0, 90.0]
   resources:
@@ -22,13 +24,13 @@ snp_recalibration:
     onekg: {known: False, training: True, truth: False, prior: 10.0}
     dbsnp: {known: True, training: False, truth: False, prior: 2.0}
   annotation:
-    joint: [QD, MQ, MQRankSum, ReadPosRankSum, FS, SOR, InbreedingCoeff$((DP))] # N.B. you should use DP with WGS and should NOT use DP with WES
-    single: [QD, MQ, MQRankSum, ReadPosRankSum, FS, SOR$((DP))] # InbreedingCoeff isn't used for single samplees
+    joint: [QD, MQ, MQRankSum, ReadPosRankSum, FS, SOR$((InbreedingCoeff))$((DP))] # N.B. you should use DP with WGS and should NOT use DP with WES
+    single: [QD, MQ, MQRankSum, ReadPosRankSum, FS, SOR$((DP))] # InbreedingCoeff isn't used for single samples
 apply_snp_recalibration:
-  use-allele-specific-annotations: ""
+  use-allele-specific-annotations:
   truth-sensitivity-filter-level: 99.7
 indel_recalibration:
-  use-allele-specific-annotations: ""
+  use-allele-specific-annotations:
   max-gaussians: $((INDEL_GAUSSIANS)) # N.B. we use 2 max-gaussians for WES and 4 for WGS
   truth-sensitivity-tranche: [100.0, 99.95, 99.9, 99.5, 99.0, 97.0, 96.0, 95.0, 94.0, 93.5, 93.0, 92.0, 91.0, 90.0]
   resources:
@@ -36,14 +38,14 @@ indel_recalibration:
     axiom: {known: False, training: True, truth: False, prior: 10.0}
     dbsnp: {known: True, training: False, truth: False, prior: 2.0}
   annotation:
-    joint: [QD, FS, SOR, ReadPosRankSum, MQRankSum, InbreedingCoeff$((DP))] # N.B. you should use DP with WGS and should NOT use DP with WES
+    joint: [QD, FS, SOR, ReadPosRankSum, MQRankSum$((InbreedingCoeff))$((DP))] # N.B. you should use DP with WGS and should NOT use DP with WES
     single: [QD, FS, SOR, ReadPosRankSum, MQRankSum$((DP))] # InbreedingCoeff isn't used for single samples
 apply_indel_recalibration:
-  use-allele-specific-annotations: ""
+  use-allele-specific-annotations:
   truth-sensitivity-filter-level: 99.0
 mosdepth:
-  fast-mode: ""
-  no-per-base: ""
+  fast-mode:
+  no-per-base:
   thresholds: [20, 30, 60, 100, 200]
 max_contamination: {{cookiecutter.max_intraspecies_contamination}} # maximum tolerable intra-species contamination
 min_relatedness: {{cookiecutter.min_identity_relatedness}} # minimum tolerable relatedness for two read groups from same individual

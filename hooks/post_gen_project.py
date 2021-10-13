@@ -15,11 +15,17 @@ elif sequencing_type in ("exome", "amplicon"):
 else:
     print(f"Unrecognized sequencing_type ({sequencing_type}.")
     sys.exit(1)
+ploidy = "{{cookiecutter.ploidy}}"
+if ploidy == "2":
+    inbreeding_coeff_string = ", InbreedingCoeff"
+else:
+    inbreeding_coeff_string = ""
 with open("config/config.yaml") as config_fh:
     config_content = config_fh.read()
 config_content = config_content.replace("$((DP))", dp_string)
 config_content = config_content.replace("$((SNP_GAUSSIANS))", snp_gaussians)
 config_content = config_content.replace("$((INDEL_GAUSSIANS))", indel_gaussians)
+config_content = config_content.replace("$((InbreedingCoeff))", inbreeding_coeff_string)
 with open("config/config.yaml", "w") as config_fh:
     config_fh.write(config_content)
 
@@ -43,4 +49,3 @@ for link, directory in (
     if not os.path.isdir(directory):
         os.makedirs(directory)
     os.symlink(directory, link)
-

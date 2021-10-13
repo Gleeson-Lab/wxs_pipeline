@@ -18,5 +18,7 @@ def get_options(rule_name, config, prefix="--", separator=" ", extra=[],
         if type(values) is not list:
             values = [values]
         for value in values:
+            if value is None:
+                value = ""
             parameters.append(f"{prefix}{parameter}{separator}{value}")
     return " ".join(parameters)
