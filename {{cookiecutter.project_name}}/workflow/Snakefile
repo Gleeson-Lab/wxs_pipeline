@@ -37,7 +37,7 @@ wildcard_constraints:
     group="\d+",  # the genome interval subsets to restrict variant calling to so as to achieve parallelization
 
 
-banned_sample_names = ("joint", "genomics_db")
+banned_sample_names = ("joint", "genomics_db", "0")
 
 
 @lru_cache

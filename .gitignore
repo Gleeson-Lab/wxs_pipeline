@@ -7,3 +7,4 @@ scratch
 resources
 *.snakemake
 *.log
+__pycache__
