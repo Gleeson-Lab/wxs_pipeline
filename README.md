@@ -32,4 +32,4 @@ Now actually running the pipeline should be fairly simple.  If you have set up t
 ---
 
 # Notes:
-1.  When installing the pipeline you will be prompted to ask for several pieces of information such as the sequencing type.  Please see [deploying the pipeline](../wiki/Deploying-the-Pipeline) for more information.
+1.  When installing the pipeline you will be prompted to ask for several pieces of information such as the sequencing type.  Please see [deploying the pipeline](../../wiki/Deploying-the-Pipeline) for more information.
