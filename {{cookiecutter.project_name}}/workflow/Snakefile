@@ -417,8 +417,6 @@ rule index_read_group:
         temp("../scratch/{sample}/{sample}_{rg}.bam.bai"),
     resources:
         walltime=partial(increment, base=1, step=3),
-    group:
-        "somalier_rg"
     wrapper:
         "0.79.0/bio/samtools/index"
 
@@ -439,6 +437,7 @@ rule verifybamid_read_group:
     params:
         # extracts ending numbers, e.g. 38 from hg38 or 37 from grch37
         genome_build=re.search(r"(\d+)$", genome_build).group(),
+        extra=get_options("verifybamid2"),
     log:
         "../logs/verifybamid/{sample}_{rg}.log",
     wrapper:
@@ -490,8 +489,6 @@ rule somalier_extract_read_group:
         sample_prefix=lambda wildcards: f"{wildcards['rg']}_",
     resources:
         walltime=0,
-    group:
-        "somalier_rg"
     shell:
         "t=$(mktemp -d) && {input.somalier} extract -d $t --sites {input.sites} "
         "-f {input.genome} --sample-prefix {params.sample_prefix} {input.bam} && "
@@ -539,6 +536,7 @@ checkpoint check_read_group_relatedness:
     params:
         min_relatedness=config["min_relatedness"],
         failure_file="../scratch/{sample}/check_read_group_relatedness.failure",
+        haploid=ploidy == 1, # the standard relatedness metric doesn't work in this case
         email=config["email"],
     resources:
         walltime=0,
@@ -675,6 +673,7 @@ rule verifybamid:
     params:
         # extracts ending numbers, e.g. 38 from hg38 or 37 from grch37
         genome_build=re.search(r"(\d+)$", genome_build).group(),
+        extra=get_options("verifybamid2"),
     resources:
         walltime=partial(increment, base=4, step=8),
     log:
@@ -827,8 +826,6 @@ rule genomics_db_import:
         walltime=partial(increment, base=8, step=8),
     log:
         "../logs/genomics_db_import/{group}.log",
-    group:
-        "genotype"
     wrapper:
         "0.79.0/bio/gatk/genomicsdbimport"
 
@@ -853,8 +850,6 @@ rule sample_genotype:
         walltime=partial(increment, base=8, step=8),
     log:
         "../logs/genotype_gvcfs/{sample}.log",
-    group:
-        "genotype"
     wrapper:
         "0.79.0/bio/gatk/haplotypecaller"
 
@@ -878,8 +873,6 @@ rule joint_genotype:
         walltime=partial(increment, base=8, step=8),
     log:
         "../logs/genotype_gvcfs/{group}.log",
-    group:
-        "genotype"
     wrapper:
         "0.79.0/bio/gatk/haplotypecaller"
 
@@ -1036,8 +1029,6 @@ rule somalier_extract_joint_vcf:
         output_directory=get_output_directory,
     resources:
         walltime=partial(increment, base=1, step=3),
-    group:
-        "somalier_vcf"
     shell:
         "{input.somalier} extract -d {params.output_directory} "
         "--sites {input.sites} -f {input.genome} {input.vcf}"
