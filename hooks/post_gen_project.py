@@ -1,5 +1,7 @@
 import os
 import sys
+from pathlib import Path
+from subprocess import run
 
 # adjusts max gaussians to pass for VQSR
 # https://gatk.broadinstitute.org/hc/en-us/articles/4402736812443-Which-training-sets-arguments-should-I-use-for-running-VQSR-
@@ -20,7 +22,7 @@ config_content = config_content.replace("$((INDEL_GAUSSIANS))", indel_gaussians)
 with open("config/config.yaml", "w") as config_fh:
     config_fh.write(config_content)
 
-# create symlinks to locations data is stored in scratch space
+# create directories, set up ACL, and create symlinks in the local project
 user = os.getlogin()
 logs = "{{cookiecutter.logs}}".replace("$USER", user)
 output = "{{cookiecutter.output}}".replace("$USER", user)
@@ -39,4 +41,7 @@ for link, directory in (
         os.rmdir(link)
     if not os.path.isdir(directory):
         os.makedirs(directory)
+    group = Path(directory).group()
+    run(f"setfacl -m g:{group}:rwx {directory}", shell=True)
+    run(f"setfacl -d -m g:{group}:rwx {directory}", shell=True)
     os.symlink(directory, link)
