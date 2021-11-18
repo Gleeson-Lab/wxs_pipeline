@@ -1,5 +1,5 @@
 # wxs_pipeline
-This pipeline takes arbitrary numbers of W[EG]S samples in BAM, or FASTQ format to create single-sample BAMs, gVCFs, VCFs, and a joint-genotyped VCF at the end, using the [GATK Best Practices](https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels-).  The pipeline is currently configured to only support hg38 or GRCh37.  Please contact <brcopeland@ucsd.edu> if you need help with something else.
+This pipeline takes arbitrary numbers of W[EG]S samples in BAM, or FASTQ format to create single-sample BAMs, gVCFs, VCFs, and a joint-genotyped VCF at the end, using the [GATK Best Practices](https://gatk.broadinstitute.org/hc/en-us/articles/360035535932-Germline-short-variant-discovery-SNPs-Indels-).  The pipeline is currently configured to only support hg38 or GRCh37.
 
 # Requirements:
 1. [Install conda](https://docs.conda.io/en/latest/miniconda.html).
