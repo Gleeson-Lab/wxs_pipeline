@@ -12,7 +12,7 @@ import os
 from collections import defaultdict
 
 DEFAULT_DICT_FILE = (
-    "/projects/ps-gleesonlab3/resources/hg38/Homo_sapiens_assembly38.dict"
+    "/projects/ps-gleesonlab7/gleeson3/resources/hg38/Homo_sapiens_assembly38.dict"
 )
 ORDER = [str(chromosome) for chromosome in list(range(1, 23)) + ["X", "Y"]]
 
