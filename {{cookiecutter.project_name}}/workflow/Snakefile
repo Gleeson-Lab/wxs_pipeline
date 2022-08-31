@@ -282,7 +282,7 @@ def get_vqsr_annotations(wildcards, rule_name):
     annotations = config[rule_name]["annotation"]
     for extra_annotation in config["vqsr"]["extra_annotations"][sequencing_type]:
         annotations.append(extra_annotation)
-    if wildcards["sample_name"] == "joint" and ploidy == 2:
+    if wildcards["sample"] == "joint" and ploidy == 2:
         for extra_annotation in config["vqsr"]["extra_joint_diploid_annotations"]:
             annotations.append(extra_annotation)
     return annotations
