@@ -6,10 +6,10 @@
 	"ploidy": "2",
 	"max_intraspecies_contamination": "0.01",
 	"min_identity_relatedness": "0.99",
-	"logs": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/logs",
-	"output": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/output",
-	"resources": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/resources",
-	"scratch": "/oasis/tscc/scratch/$USER/{{cookiecutter.project_name}}/scratch",
-	"resources_repository": "/projects/ps-gleesonlab7/gleeson3/resources",
+	"logs": "/tscc/lustre/ddn/scratch/$USER/{{cookiecutter.project_name}}/logs",
+	"output": "/tscc/lustre/ddn/scratch/$USER/{{cookiecutter.project_name}}/output",
+	"resources": "/tscc/lustre/ddn/scratch/$USER/{{cookiecutter.project_name}}/resources",
+	"scratch": "/tscc/lustre/ddn/scratch/$USER/{{cookiecutter.project_name}}/scratch",
+	"resources_repository": "/tscc/projects/ps-gleesonlab7/gleeson3/resources",
 	"_copy_without_render": ["workflow/Snakefile", "scripts/setup_inputs.py"]
 }
